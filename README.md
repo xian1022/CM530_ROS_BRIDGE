@@ -1,7 +1,5 @@
 # CM530_ROS_BRIDGE
 
-# CM530_ROS_BRIDGE
-
 ## 專案簡介
 
 這個專案是把 **ROBOTIS CM-530** 改寫成一個「橋接控制器」，
