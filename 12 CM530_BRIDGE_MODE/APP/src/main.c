@@ -6,7 +6,7 @@
 * Description        : CM-530 trajectory player for 4x AX-12A (integer version)
 *
 * 中文說明：
-* 本版本採用「整數 AX position」協定，避免舊 WinARM toolchain 的
+* 本版本採用「整數 AX position位置」協定，避免舊 WinARM toolchain 的
 * float / atof / printf 浮點格式化所造成的連結問題。
 *
 * ROS / PC 端輸入格式：
