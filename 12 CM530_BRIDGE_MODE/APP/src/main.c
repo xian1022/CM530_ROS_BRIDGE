@@ -28,11 +28,11 @@
 * This version uses integer AX position protocol.
 * ROS converts rad -> AX position first, then CM-530 directly writes
 * Goal Position to AX-12A, reads Present Position back, and returns ACK.
-*******************************************************************************/
+******************************************************************************/
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f10x_lib.h"
-#include "dynamixel.h"
+#include "dynamixel.h" 
 #include "dxl_hal.h"
 
 #include <stdlib.h>
