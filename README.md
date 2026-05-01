@@ -5,6 +5,9 @@
 本專案基於 ROBOTIS 官方 Embedded C SDK，對 CM-530 控制器韌體進行修改與重構，
 實作一個 **ROS 與 DYNAMIXEL AX-12A 之間的橋接控制系統（Bridge Firmware）**。
 
+ROBOTIS 官方 Embedded C SDK
+https://emanual.robotis.com/docs/en/software/embedded_sdk/embedded_c_cm530/
+
 系統由 ROS2 / MoveIt 產生關節軌跡，透過 Serial 傳送至 CM-530，
 再由 CM-530 轉換為 DYNAMIXEL Protocol 1.0 指令，控制機械手臂動作。
 
