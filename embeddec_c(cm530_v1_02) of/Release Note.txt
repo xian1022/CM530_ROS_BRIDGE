@@ -1,0 +1,19 @@
+v1.02
+2012-06-26
+- 11 RC100 ZIGBEE
+EnableZigbee() bug fixed
+
+
+v1.01
+2012-04-03
+
+- 09 DXL READ_WRITE
+TIM2 setting bug fixed
+TIM2 configuration bug fixed
+ClearBuffer256() bug fixed
+DXL_RX_ENABLE, TX_DISABLE pin setting bug fixed
+
+- 10 DXL SYNC WRITE
+TIM2 configuration bug fixed
+DXL_RX_ENABLE, TX_DISABLE pin setting bug fixed
+ClearBuffer256() bug fixed
