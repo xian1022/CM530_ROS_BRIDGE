@@ -1,13 +1,101 @@
 # CM530_ROS_BRIDGE
 
-CM-530 與 ROS 對接用韌體專案。  
-目前主要正式韌體是：
+CM-530 與 ROS 對接用韌體專案。
+
+目前主要正式韌體：
 
 ```text
 15 cm530 test
 ```
 
-這版以 ROBOTIS 官方 Embedded C SDK 架構為基礎，CM530 只負責接收 ROS 端送來的 AX-12A position 整數、控制 AX-12A 馬達，並回傳 ACK / ERR。
+這版以 ROBOTIS 官方 Embedded C SDK 架構為基礎。CM530 只負責接收 ROS 端送來的 AX-12A position 整數、控制 AX-12A 馬達，並回傳 ACK / ERR。
+
+---
+
+## 完整系統架構
+
+整體系統由 OpenCV Camera 節點、ROS 主控節點、CM530 節點、ESP32 吸盤/電磁閥節點，以及 AX12A 機械手臂組成。
+
+```text
+OpenCV Camera 節點 (PC)
+        |
+        | 1. Service
+        |    目標 2D position / 現在 2D position
+        v
+ROS 主控節點 (PC)
+        |
+        | 2. Action / Serial command
+        |    IK 結果轉成 AX position
+        v
+CM530 節點 (CM-530 board, PC 端使用 COM4)
+        |
+        | Dynamixel Protocol 1.0
+        v
+機械手臂 AX12A
+
+ROS 主控節點 (PC)
+        |
+        | 3. Service: 吸
+        | 5. Service: 放開
+        v
+吸盤 / 電磁閥 / 吸拼圖 (ESP32)
+```
+
+流程說明：
+
+1. OpenCV Camera 節點提供目標與目前的 2D 座標給 ROS 主控節點。
+2. ROS 主控節點計算 IK，將結果轉成 AX-12A position 整數，送給 CM530 節點。
+3. ROS 主控節點呼叫 ESP32 service 執行吸附。
+4. ROS 主控節點根據任務目標決定下一個手臂目標點或軌跡。
+5. ROS 主控節點呼叫 ESP32 service 執行放開。
+6. ROS 主控節點可送 `HOME` 讓 CM530 將手臂回到初始位置。
+
+CM530 節點會回傳 ACK / ERR 給 ROS 主控節點，例如：
+
+```text
+OK,PT,1
+OK,AX
+ERR,RANGE
+ERR,BAD_TRAJ
+```
+
+注意：RoboPlus Terminal 不屬於正式系統架構，它只用於燒錄與單機手動測試。正式 ROS 測試時，COM4 由 ROS serial node 使用。
+
+---
+
+## 本 repo 負責範圍
+
+本 repo 主要負責 CM530 節點：
+
+```text
+ROS 主控節點
+    |
+    | USB Serial, COM4 @ 57600
+    v
+CM-530
+    |
+    | Dynamixel TTL bus, 1 Mbps
+    v
+AX-12A motors
+```
+
+CM530 負責：
+
+- 接收 ROS 主控節點送出的 AX position 整數。
+- 驗證指令格式與 position 範圍。
+- 依固定 joint order 控制 AX12A。
+- 使用 SYNC_WRITE 同步寫入 Goal Position。
+- 回傳 ACK / ERR 作為 ROS 端流程控制依據。
+- 提供 `HOME` 指令讓手臂回初始位置。
+
+CM530 不負責：
+
+- 不計算 IK。
+- 不接收 rad / degree。
+- 不做座標轉換。
+- 不回讀 AX-12A present position。
+
+ROS 端必須先把 IK 結果轉成 AX-12A position 整數，再送給 CM530。
 
 ---
 
@@ -40,33 +128,6 @@ CM-530 與 ROS 對接用韌體專案。
 
 ---
 
-## 系統角色
-
-CM530 節點只負責 ROS-CM530 這段：
-
-```text
-ROS 主控端
-    |
-    | USB Serial, COM4 @ 57600
-    v
-CM-530
-    |
-    | Dynamixel TTL bus, 1 Mbps
-    v
-AX-12A motors
-```
-
-CM530 不負責：
-
-- 不計算 IK。
-- 不接收 rad / degree。
-- 不做座標轉換。
-- 不回讀 AX-12A present position。
-
-ROS 端必須先把 IK 結果轉成 AX-12A position 整數，再送給 CM530。
-
----
-
 ## 通訊設定
 
 PC / ROS 到 CM530：
@@ -79,9 +140,13 @@ Encoding  : ASCII
 Line end  : \n
 ```
 
-CM530 也容忍 `\r\n`。
+CM530 也容忍：
 
-AX-12A：
+```text
+\r\n
+```
+
+CM530 到 AX-12A：
 
 ```text
 Baudrate  : 1 Mbps
@@ -273,6 +338,21 @@ RX <- OK,PT,1
 ```
 
 目前 CM530 第一版不回傳馬達實際位置，ROS 顯示的是 target AX position。
+
+正式系統中建議開啟的視窗：
+
+```text
+OpenCV 節點 PowerShell
+ROS 主控節點 PowerShell
+```
+
+不建議同時開：
+
+```text
+RoboPlus Terminal + ROS serial node
+```
+
+因為兩者會搶同一個 COM4。
 
 ---
 
