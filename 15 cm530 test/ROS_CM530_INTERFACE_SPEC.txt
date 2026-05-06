@@ -1,0 +1,546 @@
+ROS-CM530 對接規格書
+版本: 15 cm530 test formal v1
+日期: 2026-05-06
+
+
+1. 文件目的
+
+這份文件只描述 ROS 主控端與 CM530 韌體之間的對接方式。
+
+本文件不描述影像辨識、OpenCV、IK 演算法或吸盤控制。
+
+ROS 端假設已經完成 IK 計算，並已經把角度轉成 AX-12A position 整數。
+CM530 端只接收 AX position、控制 AX-12A、回傳 ACK 或 ERR。
+
+
+2. CM530 節點責任
+
+CM530 負責:
+
+- 透過 USB serial 接收 ROS 送來的 ASCII 指令。
+- 驗證 command 格式與 AX position 範圍。
+- 依固定 joint order 將 position 寫入 AX-12A。
+- 對 ROS 回覆一行 ACK 或 ERR。
+- 提供 HOME / STOP / BEGIN / PT / END 等基本動作協定。
+
+CM530 不負責:
+
+- 不計算 IK。
+- 不接收 rad / degree。
+- 不做座標轉換。
+- 不回讀 AX-12A present position。
+- 不主動回報馬達實際角度。
+
+第一版正式串接中，ROS 看到的是 target AX position，不是馬達回讀位置。
+
+
+3. Serial 通訊設定
+
+PC/ROS 到 CM530:
+
+- Port: COM4
+- Baudrate: 57600
+- Data bits: 8
+- Parity: none
+- Stop bits: 1
+- Flow control: none
+- Encoding: ASCII
+- ROS line ending: LF, "\n"
+- CM530 同時容忍 CRLF, "\r\n"
+
+CM530 到 AX-12A:
+
+- Dynamixel baudrate: 1 Mbps
+- Protocol: Dynamixel Protocol 1.0
+- Control mode: Goal Position
+- Write method: SYNC_WRITE
+
+
+4. COM4 使用規則
+
+同一時間只能有一個程式開啟 COM4。
+
+ROS 正式測試時:
+
+- 必須關閉 RoboPlus Terminal。
+- 必須關閉其他 Python serial 測試程式。
+- COM4 只能由 ROS serial node 開啟。
+
+RoboPlus Terminal 只用於:
+
+- 燒錄 CM530.hex。
+- 單獨手動測試韌體。
+
+如果 ROS 測試時還開著 RoboPlus Terminal，通常會造成:
+
+- ROS 無法開啟 COM4。
+- 或 COM4 資料被另一個程式占用。
+
+正式監看方式應該放在 ROS PowerShell / terminal，例如:
+
+TX -> PT,1,300,520,512,512,512
+RX <- OK,PT,1
+
+
+5. CM530 開機行為
+
+CM530 app 啟動後只輸出一行:
+
+READY
+
+ROS 端開啟 serial 後可以讀掉並忽略 READY。
+
+正式版不輸出:
+
+- command echo
+- debug log
+- ALIVE heartbeat
+- startup torque error
+
+原因:
+
+- ROS 端需要乾淨判斷 ACK / ERR。
+- 如果 CM530 echo ROS 送出的 command，ROS parser 可能誤判。
+
+
+6. 馬達順序與 position 格式
+
+Joint order 固定如下:
+
+- j1 -> ID17
+- j2 -> ID3
+- j3 -> ID2
+- j4 -> ID7
+
+Position 格式:
+
+- 使用 AX-12A position 整數。
+- 合法範圍: 0..1023。
+- HOME position: 512。
+
+ROS 端必須在送給 CM530 前完成所有轉換。
+
+不允許送:
+
+- rad
+- degree
+- float
+- 空白分隔格式
+
+正確格式範例:
+
+AX,520,512,512,512
+PT,1,300,520,512,512,512
+
+
+7. ROS 端通訊流程
+
+ROS 端必須採用一問一答流程。
+
+流程:
+
+1. ROS 送出一行 command，結尾加 "\n"。
+2. ROS 等待 CM530 回傳一行 response。
+3. 如果收到 PONG 或 OK，才送下一行。
+4. 如果收到 ERR，停止目前 motion 流程並處理錯誤。
+
+不要一次連續送多行 PT 而不等待 ACK。
+
+建議 timeout:
+
+- PING timeout: 1.0 到 2.0 秒。
+- 一般 command timeout: 1.0 到 2.0 秒。
+- 若 timeout，ROS 應停止送下一筆命令，並顯示錯誤。
+
+ROS 端建議顯示:
+
+- TX command
+- RX response
+- target AX position
+- current trajectory id / seq
+
+範例:
+
+TX -> BEGIN,1,4,3
+RX <- OK,BEGIN,1
+TX -> PT,0,300,512,512,512,512
+RX <- OK,PT,0
+TX -> PT,1,300,520,512,512,512
+RX <- OK,PT,1
+
+
+8. 支援命令
+
+8.1 PING
+
+Command:
+
+PING
+
+Success response:
+
+PONG
+
+用途:
+
+- 檢查 ROS 與 CM530 serial 通訊是否正常。
+
+
+8.2 AX
+
+Command:
+
+AX,<pos>
+
+Example:
+
+AX,512
+
+Success response:
+
+OK,AX
+
+效果:
+
+- 四軸都送到同一個 position。
+
+Command:
+
+AX,<j1_pos>,<j2_pos>,<j3_pos>,<j4_pos>
+
+Example:
+
+AX,520,512,512,512
+
+Success response:
+
+OK,AX
+
+效果:
+
+- 依 joint order 分別送四軸 position。
+
+用途:
+
+- 手動測試。
+- ROS 端也可以用於單點動作測試。
+
+
+8.3 HOME
+
+Command:
+
+HOME
+
+Success response:
+
+OK,HOME
+
+效果:
+
+- 四軸送到 512。
+
+
+8.4 STOP
+
+Command:
+
+STOP
+
+Success response:
+
+OK,STOP
+
+效果:
+
+- 停止目前 trajectory 狀態。
+- 重送最後一筆 goal position。
+- 不關 torque。
+- 不回 HOME。
+
+注意:
+
+- STOP 是保持位置，不是斷電急停。
+
+
+8.5 BEGIN
+
+Command:
+
+BEGIN,<traj_id>,4,<point_count>
+
+Example:
+
+BEGIN,1,4,3
+
+Success response:
+
+OK,BEGIN,<traj_id>
+
+Example response:
+
+OK,BEGIN,1
+
+規則:
+
+- joint_count 必須是 4。
+- point_count 必須大於 0。
+- BEGIN 之後必須送剛好 point_count 筆 PT。
+
+
+8.6 PT
+
+Command:
+
+PT,<seq>,<dt_ms>,<j1_pos>,<j2_pos>,<j3_pos>,<j4_pos>
+
+Example:
+
+PT,0,300,512,512,512,512
+
+Success response:
+
+OK,PT,<seq>
+
+Example response:
+
+OK,PT,0
+
+規則:
+
+- 必須先送 BEGIN。
+- position 必須全部在 0..1023。
+- dt_ms 第一版只保留在協定格式中。
+- CM530 收到合法 PT 後立即寫入 AX-12A，成功後立刻回 OK,PT。
+- ROS 收到 OK,PT,<seq> 後再送下一點。
+
+
+8.7 END
+
+Command:
+
+END,<traj_id>
+
+Example:
+
+END,1
+
+Success response:
+
+OK,END,<traj_id>
+
+Example response:
+
+OK,END,1
+
+規則:
+
+- traj_id 必須與 BEGIN 相同。
+- 已成功接收的 PT 數量必須等於 point_count。
+
+錯誤例:
+
+BEGIN,1,4,3
+PT,0,300,512,512,512,512
+END,1
+
+因為只送 1 筆 PT，但 BEGIN 宣告 point_count 是 3，所以 END 會回:
+
+ERR,BAD_TRAJ
+
+
+9. 回覆格式
+
+CM530 每次處理完 command，最多回一行 response。
+
+成功回覆:
+
+PONG
+OK,AX
+OK,HOME
+OK,STOP
+OK,BEGIN,<traj_id>
+OK,PT,<seq>
+OK,END,<traj_id>
+
+錯誤回覆:
+
+ERR,<code>
+
+錯誤碼:
+
+ERR,BAD_CMD
+  未知命令。
+
+ERR,BAD_ARG
+  參數數量錯誤，或參數不是合法整數。
+
+ERR,RANGE
+  AX position 超出 0..1023。
+
+ERR,BAD_TRAJ
+  trajectory 狀態錯誤，例如沒有 BEGIN 就送 PT，或 PT 數量不符合 point_count。
+
+ERR,DXL_TX
+  CM530 傳送 AX-12A SYNC_WRITE 失敗。
+
+ERR,DXL_TORQUE,<id>
+  CM530 嘗試 enable torque 時該馬達 ID 回應失敗。
+
+ERR,OVERFLOW
+  單行 command 太長，超過 CM530 command buffer。
+
+
+10. ROS 端最小實作需求
+
+ROS serial node 至少需要做到:
+
+1. 開啟 COM4 @ 57600, 8N1。
+2. 開啟後等待短時間，清空 input buffer。
+3. 每行 command 用 "\n" 結尾。
+4. 每送一行就等待一行 response。
+5. 以 "\n" 切分 CM530 response。
+6. 收到 PONG / OK 才繼續。
+7. 收到 ERR 就停止目前動作並印出錯誤。
+8. 不依賴 CM530 echo。
+9. 不要求 CM530 回傳 AX-12A present position。
+
+ROS 端可以記錄:
+
+- target AX position
+- sent command
+- received ACK / ERR
+- current traj_id
+- current seq
+
+
+11. 建議測試流程
+
+11.1 RoboPlus 手動測試
+
+此測試只用於韌體單機確認。
+
+步驟:
+
+1. 用 RoboPlus Terminal 燒錄 CM530.hex。
+2. app 啟動後看到 READY。
+3. 手動輸入:
+
+PING
+AX,512
+AX,520,512,512,512
+HOME
+STOP
+
+預期:
+
+PONG
+OK,AX
+OK,AX
+OK,HOME
+OK,STOP
+
+注意:
+
+正式版沒有 command echo，所以 RoboPlus Terminal 可能不顯示你打的字。
+
+
+11.2 ROS / Python 模擬測試
+
+此測試用來確認 ROS 端 serial 行為。
+
+步驟:
+
+1. 關閉 RoboPlus Terminal。
+2. 開啟 PowerShell。
+3. 由 Python 或 ROS node 開啟 COM4。
+4. 印出 TX / RX。
+5. 送小幅軌跡。
+
+測試資料:
+
+PING
+HOME
+BEGIN,1,4,3
+PT,0,300,512,512,512,512
+PT,1,300,520,512,512,512
+PT,2,300,512,512,512,512
+END,1
+STOP
+
+預期:
+
+PONG
+OK,HOME
+OK,BEGIN,1
+OK,PT,0
+OK,PT,1
+OK,PT,2
+OK,END,1
+OK,STOP
+
+
+11.3 錯誤測試
+
+Command:
+
+AX,2000
+
+Expected:
+
+ERR,RANGE
+
+Command:
+
+BEGIN,1,3,3
+
+Expected:
+
+ERR,BAD_ARG
+
+Command:
+
+PT,0,300,512
+
+Expected:
+
+ERR,BAD_ARG
+
+Command:
+
+END,99
+
+Expected:
+
+ERR,BAD_TRAJ
+
+Command:
+
+HELLO
+
+Expected:
+
+ERR,BAD_CMD
+
+
+12. 第一版限制
+
+第一版正式串接不包含:
+
+- AX-12A present position readback。
+- 馬達實際角度回傳。
+- GETPOS 指令。
+- IK 計算。
+- rad / degree 轉換。
+- 多 COM port 監看。
+
+如果之後需要馬達實際位置，可以新增第二版指令:
+
+GETPOS
+
+可能回覆:
+
+POS,<j1_pos>,<j2_pos>,<j3_pos>,<j4_pos>
+
+但這會需要處理 AX-12A status packet timeout / corrupt 的穩定性問題。
+
