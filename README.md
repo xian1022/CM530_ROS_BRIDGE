@@ -1,239 +1,319 @@
 # CM530_ROS_BRIDGE
 
-## 專案簡介（Project Overview）
-
-本專案基於 [ROBOTIS 官方 Embedded C SDK](https://emanual.robotis.com/docs/en/software/embedded_sdk/embedded_c_cm530/)，對 CM-530 控制器韌體進行修改與重構，
-實作一個 **ROS 與 DYNAMIXEL AX-12A馬達 之間的橋接控制系統（Bridge Firmware）**。
-
-系統由 ROS2 / MoveIt 產生關節軌跡，透過 Serial 傳送至 CM-530，
-再由 CM-530 轉換為 DYNAMIXEL Protocol 1.0 指令，控制機械手臂動作。
-
----
-
-## 系統架構（System Architecture）
+CM-530 與 ROS 對接用韌體專案。  
+目前主要正式韌體是：
 
 ```text
-OpenCV (optional)
-        ↓
-ROS2 / MoveIt
-        ↓
-Serial (USB)
-        ↓
-CM-530 (Bridge Firmware)
-        ↓
-DYNAMIXEL TTL Bus
-        ↓
-AX-12A
-        ↓
-PhantomX Pincher
+15 cm530 test
 ```
 
-說明：
-
-* ROS 負責軌跡規劃與控制邏輯
-* CM-530 負責通訊解析與馬達控制
-* AX-12A 負責實際關節運動
+這版以 ROBOTIS 官方 Embedded C SDK 架構為基礎，CM530 只負責接收 ROS 端送來的 AX-12A position 整數、控制 AX-12A 馬達，並回傳 ACK / ERR。
 
 ---
 
-## 專案架構（Repository Structure）
+## 目前主版本
 
 ```text
-CM530_ROS_BRIDGE/
-└── 12 CM530_BRIDGE_MODE/       ← 本專案主要韌體
-    ├── APP/
-    │   ├── inc/
-    │   │   ├── dxl_hal.h
-    │   │   ├── dynamixel.h
-    │   │   └── stm32f10x_it.h
-    │   └── src/
-    │       ├── main.c
-    │       ├── dxl_hal.c
-    │       ├── dynamixel.c
-    │       ├── stm32f10x_it.c
-    │       └── syscalls.c
-    │
-    ├── stm32f10x_lib/          ← 官方 STM32 Library
-    ├── Makefile
-    ├── stm32.ld
-    ├── stm32f10x_conf.h
-    ├── CM530.bin / .elf / .hex
-    └── test_cm530.py
+15 cm530 test/
 ```
 
-說明：
-
-* `12 CM530_BRIDGE_MODE`：本專案核心（基於官方 SDK 修改）
-* 其餘結構為 ROBOTIS 官方 Embedded SDK
-
----
-
-## 核心功能（Core Functionality）
-
-### 1. Serial 指令解析
-
-CM-530 透過 UART 接收 ROS 傳來的 ASCII 指令，並逐行解析。
-
-### 2. 軌跡播放（Trajectory Playback）
-
-支援多點軌跡（Trajectory Points）逐點執行，包含：
-
-* 序列檢查（seq）
-* 時間間隔控制（dt_ms）
-* 多關節同步更新
-
-### 3. 整數位置控制（Integer AX Position）
-
-本版本採用 **AX-12A 整數位置控制（0~1023）**，避免浮點運算問題。
-ROS 需先完成 rad → position 轉換，再傳送至 CM-530。
-
-### 4. DYNAMIXEL 控制
-
-透過官方函式：
-
-* `dxl_write_word()` → 設定 Goal Position
-* `dxl_read_word()` → 回讀 Present Position
-
-使用 Half-Duplex UART 與 AX-12A 通訊。
-
-### 5. 回饋機制（Feedback）
-
-每個軌跡點會：
-
-* 回讀實際位置
-* 輸出狀態資訊
-* 回傳 ACK（OK / ERR）
-
-### 6. 最終到位確認
-
-在 `END` 指令後，系統會等待所有馬達進入容差範圍內才結束。
-
----
-
-## 通訊格式（Communication Protocol）
-
-### Serial 設定
+重要檔案：
 
 ```text
-Baud Rate : 57600
-Data Bits : 8
-Parity    : None
-Stop Bits : 1
-Format    : ASCII
-Line End  : \n
+15 cm530 test/APP/src/main.c
+15 cm530 test/CM530.hex
+15 cm530 test/CM530.bin
+15 cm530 test/ROS_CM530_INTERFACE_SPEC.txt
+```
+
+用途：
+
+- `main.c`：正式版 CM530 ROS bridge 韌體原始碼，已有中文註解，英文輔助。
+- `CM530.hex`：燒錄到 CM-530 的正式版韌體。
+- `ROS_CM530_INTERFACE_SPEC.txt`：給 ROS 端負責人看的 ROS-CM530 對接規格書。
+
+舊資料夾說明：
+
+- `12 CM530_BRIDGE_MODE`：早期 bridge mode 版本，保留作歷史參考。
+- `14 final test`：前期除錯與 RX/TX 驗證版本，保留作 debug 參考。
+- `15 cm530 test`：目前正式主版本。
+
+---
+
+## 系統角色
+
+CM530 節點只負責 ROS-CM530 這段：
+
+```text
+ROS 主控端
+    |
+    | USB Serial, COM4 @ 57600
+    v
+CM-530
+    |
+    | Dynamixel TTL bus, 1 Mbps
+    v
+AX-12A motors
+```
+
+CM530 不負責：
+
+- 不計算 IK。
+- 不接收 rad / degree。
+- 不做座標轉換。
+- 不回讀 AX-12A present position。
+
+ROS 端必須先把 IK 結果轉成 AX-12A position 整數，再送給 CM530。
+
+---
+
+## 通訊設定
+
+PC / ROS 到 CM530：
+
+```text
+Port      : COM4
+Baudrate  : 57600
+Format    : 8N1
+Encoding  : ASCII
+Line end  : \n
+```
+
+CM530 也容忍 `\r\n`。
+
+AX-12A：
+
+```text
+Baudrate  : 1 Mbps
+Protocol  : Dynamixel Protocol 1.0
+Write     : SYNC_WRITE Goal Position
+```
+
+Joint order：
+
+```text
+j1 -> ID17
+j2 -> ID3
+j3 -> ID2
+j4 -> ID7
+```
+
+Position：
+
+```text
+AX position integer: 0..1023
+HOME position      : 512
 ```
 
 ---
 
-### 指令格式
+## 支援命令
 
 ```text
 PING
+AX,<pos>
+AX,<j1_pos>,<j2_pos>,<j3_pos>,<j4_pos>
+HOME
+STOP
 BEGIN,<traj_id>,4,<point_count>
 PT,<seq>,<dt_ms>,<j1_pos>,<j2_pos>,<j3_pos>,<j4_pos>
 END,<traj_id>
-STOP
-HOME
 ```
 
----
-
-### 範例
+成功回覆：
 
 ```text
-BEGIN,1,4,3
-PT,0,50,512,430,760,580
-PT,1,45,520,440,748,590
-PT,2,60,530,455,730,602
-END,1
+PONG
+OK,AX
+OK,HOME
+OK,STOP
+OK,BEGIN,<traj_id>
+OK,PT,<seq>
+OK,END,<traj_id>
 ```
 
----
-
-### 馬達對應（Joint Mapping）
+錯誤回覆：
 
 ```text
-j1 → ID17
-j2 → ID3
-j3 → ID2
-j4 → ID7
+ERR,BAD_CMD
+ERR,BAD_ARG
+ERR,RANGE
+ERR,BAD_TRAJ
+ERR,DXL_TX
+ERR,DXL_TORQUE,<id>
+ERR,OVERFLOW
+```
+
+更完整的協定請看：
+
+```text
+15 cm530 test/ROS_CM530_INTERFACE_SPEC.txt
 ```
 
 ---
 
-## 核心程式說明（Key Modules）
+## Build
 
-### `main.c`
+在 PowerShell 執行：
 
-主要控制流程：
-
-* 系統初始化（GPIO / UART / Timer）
-* 初始化 DYNAMIXEL bus
-* 初始化 Joint 與 Trajectory 狀態
-* 持續接收並解析指令
-* 控制 AX-12A 執行動作
-
-程式內實作：
-
-* 指令解析（PING / BEGIN / PT / END / STOP / HOME）
-* 軌跡狀態機（Trajectory State Machine）
-* 多馬達控制與回饋
-* 最終到位檢查機制
-
----
-
-### `dxl_hal.c`
-
-負責 DYNAMIXEL 半雙工 UART 底層控制。
-
----
-
-### `dynamixel.c`
-
-封裝 DYNAMIXEL Protocol 1.0 指令操作。
-
----
-
-## 硬體需求（Hardware）
-
-* ROBOTIS CM-530
-* DYNAMIXEL AX-12A（4 顆）
-* PhantomX Pincher（或等效機械手臂）
-
----
-
-## 編譯方式（Build）
-
-```bash
-make all
+```powershell
+cd "C:\Users\39165\Downloads\CM530_ROS_BRIDGE\15 cm530 test"
+make clean
+make CM530.hex CM530.bin
 ```
 
 輸出：
 
 ```text
+CM530.hex
 CM530.bin
+```
+
+備註：
+
+- 官方 SDK 舊式 C code 會出現一些 warning，通常不影響 `CM530.hex` / `CM530.bin` 產生。
+- 若 `make all` 在產生 `.lss` 時出問題，正式燒錄只需要 `CM530.hex` 或 `CM530.bin`。
+
+---
+
+## 燒錄
+
+使用 RoboPlus Terminal：
+
+1. 開啟 RoboPlus Terminal。
+2. 連接 CM-530 的 `COM4 @ 57600`。
+3. 燒錄：
+
+```text
+15 cm530 test/CM530.hex
+```
+
+4. 燒錄後 app 啟動時會輸出：
+
+```text
+READY
+```
+
+正式版韌體已關閉 command echo，所以在 RoboPlus Terminal 手動打字時，可能看不到自己輸入的內容。這是正常的，目的是避免 ROS 端收到自己送出的 echo。
+
+---
+
+## RoboPlus 手動測試
+
+此測試只用來確認韌體與手臂基本可動。
+
+輸入：
+
+```text
+PING
+AX,512
+AX,520,512,512,512
+HOME
+STOP
+```
+
+預期：
+
+```text
+PONG
+OK,AX
+OK,AX
+OK,HOME
+OK,STOP
+```
+
+正式軌跡測試：
+
+```text
+BEGIN,1,4,3
+PT,0,300,512,512,512,512
+PT,1,300,520,512,512,512
+PT,2,300,512,512,512,512
+END,1
+```
+
+預期：
+
+```text
+OK,BEGIN,1
+OK,PT,0
+OK,PT,1
+OK,PT,2
+OK,END,1
 ```
 
 ---
 
-## 燒錄方式（Flash）
+## ROS 串接操作
 
-透過 RoboPlus：
+正式 ROS 測試時，不要開 RoboPlus Terminal。
 
-1. 進入 Boot Loader 模式
-2. 上傳 `.bin`
-3. 重啟控制器
+COM4 使用規則：
+
+```text
+同一時間只能有一個程式開啟 COM4。
+```
+
+建議流程：
+
+1. 先用 RoboPlus Terminal 燒錄 `15 cm530 test/CM530.hex`。
+2. 關閉 RoboPlus Terminal。
+3. 開 ROS serial node 或 Python 模擬器。
+4. ROS 開啟 `COM4 @ 57600`。
+5. ROS 可忽略或清掉開機的 `READY`。
+6. ROS 每送一行 command，都等待一行 ACK / ERR。
+7. 收到 `OK,...` 或 `PONG` 才送下一行。
+8. 收到 `ERR,...` 就停止本次 motion 流程並印出錯誤。
+
+ROS / Python terminal 建議印出：
+
+```text
+TX -> PT,1,300,520,512,512,512
+RX <- OK,PT,1
+```
+
+目前 CM530 第一版不回傳馬達實際位置，ROS 顯示的是 target AX position。
 
 ---
 
-## 作者資訊（Author）
+## ROS 端最小實作要求
 
-* 姓名：xian1022
+ROS serial node 至少需要：
+
+- 開啟 `COM4 @ 57600, 8N1`。
+- 每行 command 使用 `\n` 結尾。
+- 以 `\n` 讀取 CM530 response。
+- 每送一行都等待 response。
+- 收到 `PONG` / `OK,...` 才繼續。
+- 收到 `ERR,...` 要停止或進入錯誤處理。
+- 不依賴 CM530 echo。
+- 不要求 CM530 回傳 present position。
 
 ---
 
-## 說明（Notes）
+## 第一版限制
 
-* 本專案基於 ROBOTIS 官方 SDK 修改
-* CM-530 僅負責執行，不進行浮點計算
-* ROS 需負責角度轉換（rad → AX position）
+目前正式版不包含：
+
+- AX-12A present position readback。
+- 馬達實際角度回傳。
+- `GETPOS` 指令。
+- IK 計算。
+- rad / degree 轉換。
+
+若未來需要馬達實際位置，可新增第二版指令，例如：
+
+```text
+GETPOS
+POS,<j1_pos>,<j2_pos>,<j3_pos>,<j4_pos>
+```
+
+但這需要另外處理 AX-12A status packet timeout / corrupt 的穩定性問題。
+
+---
+
+## Author
+
+```text
+xian1022
+```
