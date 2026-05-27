@@ -14,6 +14,8 @@ CM-530 與 ROS 對接用韌體專案。
 
 ## 完整系統架構
 
+![系統架構](image.png)
+
 整體系統由 OpenCV Camera 節點、ROS 主控節點、CM530 節點、ESP32 吸盤/電磁閥節點，以及 AX12A 機械手臂組成。
 
 ```text
@@ -160,7 +162,7 @@ Joint order：
 j1 -> ID17
 j2 -> ID3
 j3 -> ID2
-j4 -> ID7
+j4 -> ID15
 ```
 
 Position：

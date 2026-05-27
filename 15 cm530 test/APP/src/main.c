@@ -72,8 +72,8 @@ u32								Baudrate_DXL = 1000000;
 u32								Baudrate_PC = 57600;
 
 /* ROS/IK 輸出順序固定為 j1,j2,j3,j4；這裡映射到 AX-12A ID。 */
-/* Fixed ROS joint order: j1->ID17, j2->ID3, j3->ID2, j4->ID7. */
-byte							gJointId[NUM_JOINTS] = {17, 3, 2, 7};
+/* Fixed ROS joint order: j1->ID17, j2->ID3, j3->ID2, j4->ID15. */
+byte							gJointId[NUM_JOINTS] = {17, 3, 2, 15};
 byte							gTorqueReady[NUM_JOINTS] = {0, 0, 0, 0};
 byte							gLastTorqueErrorId = 0;
 /* STOP 會重送最後目標位置來保持姿態，不關 torque、不回 HOME。 */

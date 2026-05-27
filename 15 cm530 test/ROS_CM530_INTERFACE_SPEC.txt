@@ -110,7 +110,7 @@ Joint order 固定如下:
 - j1 -> ID17
 - j2 -> ID3
 - j3 -> ID2
-- j4 -> ID7
+- j4 -> ID15
 
 Position 格式:
 
@@ -543,4 +543,3 @@ GETPOS
 POS,<j1_pos>,<j2_pos>,<j3_pos>,<j4_pos>
 
 但這會需要處理 AX-12A status packet timeout / corrupt 的穩定性問題。
-
