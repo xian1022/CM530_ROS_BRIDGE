@@ -1,0 +1,118 @@
+ROS-CM530 對接規格書
+版本：16 cm530 test，A/B dual-arm
+日期：2026-09-24
+
+1. 範圍與映射
+
+一個 CM530、一個序列埠，由 ROS 每筆指定 A/B。
+由下到上 j1,j2,j3,j4：
+  A = 17,3,2,15
+  B = 12,1,8,16
+馬達 ID 須先在硬體設定完成，韌體只使用這些 ID，不會改写 EEPROM ID。
+只接收 AX position 整數 0..1023；HOME=512。
+不做 IK、角度轉換、回讀位置、雙臂同時封包、吸盤或協作任務規劃。
+
+2. 連線與啟動
+
+PC: 可設定的序列埠（終端預設 COM4），57600/8N1，無流量控制。
+Dynamixel: 1 Mbps / Protocol 1.0，四軸 SYNC_WRITE Goal Position。
+ROS 使用 ASCII + LF；容忍 CR/CRLF、命令與手臂大小寫、欄位首尾空白。
+也容忍行首 UTF-8 BOM 與 UTF-8 全形逗號。
+不刪除浮點小數點或任意雜訊來湊成合法數值。
+
+開機初始化兩臂 torque 後輸出 READY，不自動送出位置。
+初始化沿用 v15 best-effort：每顆嘗試一次，不因 status timeout 拒絕後續位置命令。
+八顆都沒回覆時可能等待約 4.8 秒；啟動監聽預設 6 秒。
+READY 不證明馬達存在、torque 成功或已到位。
+同一時間只有一個程式開啟序列埠。正式 ROS 使用時關閉 RoboPlus。
+
+3. 指令及精確成功回覆
+
+PING
+  PONG
+AX,<arm>,<pos>
+AX,<arm>,<j1>,<j2>,<j3>,<j4>
+  OK,AX,<arm>
+HOME,<arm>
+  OK,HOME,<arm>
+STOP,<arm>
+  OK,STOP,<arm>
+BEGIN,<arm>,<traj_id>,4,<point_count>
+  OK,BEGIN,<arm>,<traj_id>
+PT,<arm>,<seq>,<dt_ms>,<j1>,<j2>,<j3>,<j4>
+  OK,PT,<arm>,<seq>
+END,<arm>,<traj_id>
+  OK,END,<arm>,<traj_id>
+
+arm 僅允許 A/B。省略代號的第 15 版動作指令一律拒絕。
+沒有 ALL/BOTH、隱含「目前選取手臂」或全域 STOP/HOME 指令。
+回覆使用大寫及 CRLF；空行忽略。每筆非空完整指令最多回覆一行。
+長行溢位可提早回 ERR，該行剩餘內容一直丟棄至換行，不再回覆。
+
+4. 軌跡及目標語意
+
+A/B 各自保存 torque 嘗試紀錄、最後目標、active、traj_id、expected、received。
+每筆位置封包只帶指定手臂的四顆 ID。
+BEGIN joint_count 必須為 4，point_count > 0；重新 BEGIN 會覆寫該臂舊軌跡。
+PT 必須在該臂 BEGIN 之後、未超過預期點數；dt_ms >= 0。
+PT 驗證完立即送出位置封包。只有傳送成功才增加 received、更新最後目標。
+seq 僅原樣回覆，不要求從 0 連續；ROS 負責排序與避免重複送出。
+dt_ms 保留但不執行延時、速度控制或插值。
+END 必須 traj_id 相同且收到正好 point_count 筆成功 PT，完成後清除 active。
+A/B 可以使用相同 traj_id，狀態互不影響。
+AX/HOME 不改變該臂既有軌跡計數（沿用 v15）；ROS 應避免混用造成不預期路徑。
+STOP 先清除該臂 active，再重送該臂最後目標；即使傳送失敗，軌跡仍已取消。
+STOP 不讀取當前位置，不是 torque-off 或立即停止的急停。
+初始最後目標為 512，因此首次 STOP 可能使手臂朝 512 移動。
+
+所有數值必須可表示為 signed 32-bit 十進位整數，可帶 +/-。
+position 額外限制 0..1023；point_count>0；dt_ms>=0。
+traj_id、seq 作為識別整數使用；建議 ROS 使用從 0 開始的非負值。
+
+5. 錯誤
+
+已辨識手臂：ERR,<code>,<arm>
+未辨識手臂／連線層錯誤：ERR,<code>
+
+BAD_CMD: 未知命令。
+BAD_ARG: 缺少/非法手臂、參數数量、非整數或 signed 32-bit 溢位。
+RANGE: position 不在 0..1023。
+BAD_TRAJ: 未 BEGIN、點數超出、不完整 END、traj_id 不符或負的 dt_ms。
+DXL_TX: SYNC_WRITE 本地傳送失敗。沒有馬達回應確認，缺少馬達仍可能回 OK。
+OVERFLOW: 單行超過 95 bytes，或 UART 接收資料遺失。
+
+例：
+AX,512                 -> ERR,BAD_ARG
+AX,C,512               -> ERR,BAD_ARG
+AX,B,2000              -> ERR,RANGE,B
+PT,A,0,300,512         -> ERR,BAD_ARG,A
+HELLO,B                -> ERR,BAD_CMD,B
+
+v15 的 DXL_TORQUE 名稱保留為歷史說明，本版 best-effort 路徑不會送出此錯誤。
+溢位回 ERR,OVERFLOW 不猜測手臂；丟棄損壞行後可用 PING 重新確認通訊。
+
+6. ROS 請求／回覆
+
+每送一行必須等待並核對完整回覆，包含命令、手臂、traj_id/seq。
+一般 timeout 建議 2 秒，開機初始化另給至少 6 秒。
+任何 ERR、逾時或不匹配 ACK 均停止後續動作發送，不自動重送 PT。
+請求中收到 READY 表示控制板重新啟動，原軌跡狀態已消失，應終止流程。
+ACK 只表示目標封包傳送成功，不等於實際到位；ROS 自行決定何時讓另一臂動作。
+
+交替範例（每行等待右方回覆後才送下一行）：
+BEGIN,A,10,4,1                   -> OK,BEGIN,A,10
+BEGIN,B,20,4,1                   -> OK,BEGIN,B,20
+PT,A,0,300,520,512,512,512       -> OK,PT,A,0
+PT,B,0,300,520,512,512,512       -> OK,PT,B,0
+END,A,10                         -> OK,END,A,10
+END,B,20                         -> OK,END,B,20
+
+7. 實機驗收（待執行）
+
+建置並燒錄 v16 -> 等 READY -> PING/PONG。
+確認兩臂 HOME=512 姿態後，分別送 HOME,A 與 HOME,B。
+A j1 小幅 512->520->512，確認只對 A 的 ID17 下達新目標。
+B j1 小幅 512->520->512，確認只對 B 的 ID12 下達新目標。
+执行交替軌跡，核對每筆 ACK 的手臂與序號。
+分別測 STOP，確認保留最後目標且不改另一臂軌跡狀態。
+本機模擬測試不能取代上述實測，也不能證明機械到位／碰撞安全。

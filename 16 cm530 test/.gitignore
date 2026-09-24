@@ -1,0 +1,8 @@
+*.o
+*.a
+*.elf
+*.map
+*.lss
+__pycache__/
+tests/*.exe
+*.log
