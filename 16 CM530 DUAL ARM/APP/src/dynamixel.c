@@ -14,6 +14,7 @@ unsigned char gbRxPacketLength = 0;
 unsigned char gbRxGetLength = 0;
 int gbCommStatus = COMM_RXSUCCESS;
 int giBusUsing = 0;
+static int gbRxSawData;
 
 
 int dxl_initialize( int devIndex, int baudnum )
@@ -50,7 +51,7 @@ void dxl_tx_packet()
 
 	giBusUsing = 1;
 
-	if( gbInstructionPacket[LENGTH] > (MAXNUM_TXPARAM+2) )
+	if( gbInstructionPacket[LENGTH] < 2 || gbInstructionPacket[LENGTH] > (MAXNUM_TXPARAM+2) )
 	{
 		gbCommStatus = COMM_TXERROR;
 		giBusUsing = 0;
@@ -76,14 +77,10 @@ void dxl_tx_packet()
 		checksum += gbInstructionPacket[i+2];
 	gbInstructionPacket[gbInstructionPacket[LENGTH]+3] = ~checksum;
 	
-	if( gbCommStatus == COMM_RXTIMEOUT || gbCommStatus == COMM_RXCORRUPT )
-	{
-
-
-
-
-		dxl_hal_clear();
-	}
+    /* Discard stale UART bytes before a new reply-bearing transaction. */
+    if (gbInstructionPacket[ID] != BROADCAST_ID) dxl_hal_clear();
+    gbRxGetLength = gbRxPacketLength = 0;
+    gbRxSawData = 0;
 
 	TxNumByte = gbInstructionPacket[LENGTH] + 4;
 	RealTxNumByte = dxl_hal_tx( (unsigned char*)gbInstructionPacket, TxNumByte );
@@ -104,110 +101,48 @@ void dxl_tx_packet()
 	gbCommStatus = COMM_TXSUCCESS;
 }
 
+/* Bounded incremental receiver. No untrusted length is used as an array
+ * index until it has been checked. The transaction deadline never restarts. */
 void dxl_rx_packet()
 {
-	unsigned char i, j, nRead;
-	unsigned char checksum = 0;
-
-	if( giBusUsing == 0 )
-		return;
-
-	if( gbInstructionPacket[ID] == BROADCAST_ID )
-	{
-		gbCommStatus = COMM_RXSUCCESS;
-		giBusUsing = 0;
-		return;
-	}
-	
-	if( gbCommStatus == COMM_TXSUCCESS )
-	{
-		gbRxGetLength = 0;
-		gbRxPacketLength = 6;
-	}
-
-	nRead = dxl_hal_rx( (unsigned char*)&gbStatusPacket[gbRxGetLength], gbRxPacketLength - gbRxGetLength );
-/*
-	TxDByte16(nRead);
-	TxDByte_PC('\r');
-	TxDByte_PC('\n');
-*/
-	gbRxGetLength += nRead;
-	if( gbRxGetLength < gbRxPacketLength )
-	{
-		if( dxl_hal_timeout() == 1 )
-		{
-
-
-			if(gbRxGetLength == 0)
-				gbCommStatus = COMM_RXTIMEOUT;
-			else
-				gbCommStatus = COMM_RXCORRUPT;
-			giBusUsing = 0;
-			return;
-		}
-	}
-	
-	// Find packet header
-	for( i=0; i<(gbRxGetLength-1); i++ )
-	{
-		if( gbStatusPacket[i] == 0xff && gbStatusPacket[i+1] == 0xff )
-		{
-			break;
-		}
-		else if( i == gbRxGetLength-2 && gbStatusPacket[gbRxGetLength-1] == 0xff )
-		{
-			break;
-		}
-	}	
-	if( i > 0 )
-	{
-		for( j=0; j<(gbRxGetLength-i); j++ )
-			gbStatusPacket[j] = gbStatusPacket[j + i];
-			
-		gbRxGetLength -= i;		
-	}
-
-	if( gbRxGetLength < gbRxPacketLength )
-	{
-		gbCommStatus = COMM_RXWAITING;
-		return;
-	}
-
-
-	// Check id pairing
-	if( gbInstructionPacket[ID] != gbStatusPacket[ID])
-	{
-		gbCommStatus = COMM_RXCORRUPT;
-		giBusUsing = 0;
-		return;
-	}
-	
-	gbRxPacketLength = gbStatusPacket[LENGTH] + 4;
-	if( gbRxGetLength < gbRxPacketLength )
-	{
-		nRead = dxl_hal_rx( (unsigned char*)&gbStatusPacket[gbRxGetLength], gbRxPacketLength - gbRxGetLength );
-		gbRxGetLength += nRead;
-		if( gbRxGetLength < gbRxPacketLength )
-		{
-			gbCommStatus = COMM_RXWAITING;
-			return;
-		}
-	}
-
-	// Check checksum
-	for( i=0; i<(gbStatusPacket[LENGTH]+1); i++ )
-		checksum += gbStatusPacket[i+2];
-	checksum = ~checksum;
-
-	if( gbStatusPacket[gbStatusPacket[LENGTH]+3] != checksum )
-	{
-		gbCommStatus = COMM_RXCORRUPT;
-		giBusUsing = 0;
-		return;
-	}
-
-	gbCommStatus = COMM_RXSUCCESS;
-	giBusUsing = 0;
+    int got, i;
+    unsigned char ch, checksum = 0;
+    if (!giBusUsing) return;
+    if (gbInstructionPacket[ID] == BROADCAST_ID) {
+        gbCommStatus = COMM_RXSUCCESS; giBusUsing = 0; return;
+    }
+    if (dxl_hal_timeout()) {
+        gbCommStatus = gbRxSawData ? COMM_RXCORRUPT : COMM_RXTIMEOUT;
+        giBusUsing = 0; return;
+    }
+    got = dxl_hal_rx(&ch, 1);
+    if (got < 0 || got > 1) {
+        gbCommStatus = COMM_RXFAIL; giBusUsing = 0; return;
+    }
+    gbCommStatus = COMM_RXWAITING;
+    if (!got) return;
+    gbRxSawData = 1;
+    if (gbRxGetLength < 2) {
+        if (ch == 0xff) gbStatusPacket[gbRxGetLength++] = ch;
+        else gbRxGetLength = 0;
+        return;
+    }
+    /* An extra FF may precede the packet's actual ID. */
+    if (gbRxGetLength == 2 && ch == 0xff) return;
+    gbStatusPacket[gbRxGetLength++] = ch;
+    if (gbRxGetLength == 4) {
+        if (gbStatusPacket[ID] != gbInstructionPacket[ID] ||
+            gbStatusPacket[LENGTH] < 2 || gbStatusPacket[LENGTH] > MAXNUM_RXPARAM + 2 ||
+            (gbInstructionPacket[INSTRUCTION] == INST_READ &&
+             gbStatusPacket[LENGTH] != gbInstructionPacket[PARAMETER+1] + 2)) {
+            gbCommStatus = COMM_RXCORRUPT; giBusUsing = 0; return;
+        }
+        gbRxPacketLength = gbStatusPacket[LENGTH] + 4;
+    }
+    if (gbRxGetLength < 4 || gbRxGetLength < gbRxPacketLength) return;
+    for (i = 2; i < gbRxPacketLength; i++) checksum += gbStatusPacket[i];
+    gbCommStatus = checksum == 255 ? COMM_RXSUCCESS : COMM_RXCORRUPT;
+    giBusUsing = 0;
 }
 
 void dxl_txrx_packet()

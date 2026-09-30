@@ -54,6 +54,8 @@ all: $(MAIN_OUT_ELF) $(MAIN_OUT_HEX) $(MAIN_OUT_BIN) $(MAIN_OUT_LSS)
 MAIN_OBJS = \
  APP/src/main.o \
  APP/src/bridge.o \
+ APP/src/ax12.o \
+ APP/src/arm_led.o \
  APP/src/stm32f10x_it.o \
  APP/src/dxl_hal.o \
  APP/src/dynamixel.o \

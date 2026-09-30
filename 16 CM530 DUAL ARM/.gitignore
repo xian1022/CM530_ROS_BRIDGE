@@ -5,4 +5,5 @@
 *.lss
 __pycache__/
 tests/*.exe
+tests/*.pdb
 *.log

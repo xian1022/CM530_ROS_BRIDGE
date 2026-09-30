@@ -3,7 +3,7 @@
 * Author             : ROBOTIS / project adaptation
 * Version            : V0.0.1
 * Date               : 08/23/2010
-* Description        : CM-530 v16 A/B AX position bridge using official SDK style
+* Description        : CM-530 v16 arm1/arm2 AX position bridge using official SDK style
 * 說明               : ROS 端送 AX-12A position 整數，CM-530 負責收命令、
 *                      驗證參數、SYNC_WRITE 控制 AX-12A，並回 ACK/ERR。
 * Note               : ROS sends AX position integers; CM-530 validates,
@@ -15,6 +15,7 @@
 #include "dynamixel.h"
 #include "dxl_hal.h"
 #include "bridge.h"
+#include "arm_led.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -86,8 +87,9 @@ void mDelay(u32 nTime);
 void StartDiscount(s32 StartTime);
 byte CheckTimeOut(void);
 
-/* A/B parser and independent motion state live in bridge.c. */
+/* Parser and independent target eligibility live in bridge.c. */
 void BridgeOutput(const char *text) { TxDString(text); }
+void BridgeSetArmLed(int arm, int moving) { ArmLedSet(arm, moving); }
 
 int main(void)
 {
@@ -97,14 +99,12 @@ int main(void)
     RCC_Configuration();
     NVIC_Configuration();
     GPIO_Configuration();
+    ArmLedInit();
     SysTick_Configuration();
     Timer_Configuration();
     dxl_initialize(0, DEFAULT_BAUDNUM);
     USART_Configuration(USART_PC, Baudrate_PC);
     BridgeInit();
-    BridgeEnableTorque();
-    /* READY means initialization has finished; no command queue during it. */
-    TxDString("READY\r\n");
     while (1) {
         /* Atomically take the overflow flag and a byte from the ISR queue. */
         USART_ITConfig(USART3, USART_IT_RXNE, DISABLE);

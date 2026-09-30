@@ -75,10 +75,18 @@ def main():
     assert sp == RAM_END and sp % 8 == 0
     assert reset & 1 and BASE <= reset - 1 < BASE + len(binary)
     assert entry == reset, "ELF entry must be the Thumb Reset_Handler"
-    assert bytes((17, 3, 2, 15, 12, 1, 8, 16)) in binary, "A/B ID map missing"
-    print("PASS: ARM ELF, HEX checksums, identical BIN, vectors and A/B ID map")
+    assert bytes((17, 3, 2, 15, 12, 1, 8, 16)) in binary, "arm1/arm2 ID map missing"
+    for tag in (b",arm1\x00", b",arm2\x00", b"ARM1\x00", b"ARM2\x00"):
+        assert tag in binary, "arm1/arm2 protocol tag missing"
+    for tag in (b"READY,4\r\n\x00", b"VERSION,4\r\n\x00", b"TORQUE\x00",
+                b"AX\x00", b"NO_TARGET\x00", b"INIT_FAILED\x00",
+                b"LED\x00", b"MOVING\x00", b"STOPPED\x00"):
+        assert tag in binary, "protocol 4 firmware marker missing: {!r}".format(tag)
+    for removed in (b"READY,2", b"VERSION,2", b"READY,3", b"VERSION,3", b"HOME\x00", b"HOLD\x00", b"BEGIN\x00", b"PT\x00", b"END\x00", b"BAD_TRAJ\x00", b"DXL_TIMEOUT\x00"):
+        assert removed not in binary, "obsolete protocol marker remains: {!r}".format(removed)
+    print("PASS: ARM ELF, HEX checksums, identical BIN, vectors, ID map and protocol 4 markers")
     print("Flash base=0x{:08X}; stack=0x{:08X}; reset=0x{:08X}".format(BASE, sp, reset))
-    for name in ("CM530.hex", "CM530.bin"):
+    for name in ("CM530.elf", "CM530.hex", "CM530.bin"):
         data = (ROOT / name).read_bytes()
         print("{}: {} bytes; SHA256 {}".format(name, len(data), hashlib.sha256(data).hexdigest()))
 

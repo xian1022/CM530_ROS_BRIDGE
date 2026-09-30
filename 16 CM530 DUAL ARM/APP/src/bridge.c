@@ -1,20 +1,14 @@
-/* CM530 v16: explicit A/B routing; target ACK, no arrival feedback. */
+/* CM530 v16 / serial protocol 4. ACK is processing success, never arrival. */
 #include <limits.h>
 #include "bridge.h"
-#include "dynamixel.h"
 
 typedef struct {
-    unsigned char torqueAttempted[BRIDGE_JOINTS];
-    unsigned short last[BRIDGE_JOINTS];
-    int active, trajId, expected, received;
+    int targetValid;
 } ArmState;
 
-static const unsigned char jointIds[BRIDGE_ARMS][BRIDGE_JOINTS] = {
-    {17, 3, 2, 15}, {12, 1, 8, 16}
-};
 static ArmState arms[BRIDGE_ARMS];
 static char line[BRIDGE_LINE_SIZE];
-static int used, discard;
+static int used, discard, initialized;
 
 static int equal(const char *a, const char *b)
 {
@@ -42,7 +36,7 @@ static void number(int n)
 
 static void armTag(int arm)
 {
-    if (arm >= 0) BridgeOutput(arm == 0 ? ",A" : ",B");
+    if (arm >= 0) BridgeOutput(arm == 0 ? ",arm1" : ",arm2");
 }
 
 static void error(const char *code, int arm)
@@ -107,51 +101,21 @@ static int split(char *s, char **argv, int max)
     }
 }
 
-static void enableTorque(int arm)
-{
-    int j;
-    for (j = 0; j < BRIDGE_JOINTS; j++) {
-        if (arms[arm].torqueAttempted[j]) continue;
-        dxl_write_byte(jointIds[arm][j], 24, 1);
-        /* v15 best-effort policy: an absent status packet is not a motion
-         * failure. This records an attempt, not confirmed torque state. */
-        arms[arm].torqueAttempted[j] = 1;
-    }
-}
-
-void BridgeEnableTorque(void)
-{
-    int arm;
-    for (arm = 0; arm < BRIDGE_ARMS; arm++) enableTorque(arm);
-}
-
 static int apply(int arm, const unsigned short *pos)
 {
-    int j, result;
-    enableTorque(arm);
-    dxl_set_txpacket_id(BROADCAST_ID);
-    dxl_set_txpacket_instruction(INST_SYNC_WRITE);
-    dxl_set_txpacket_parameter(0, 30);
-    dxl_set_txpacket_parameter(1, 2);
-    for (j = 0; j < BRIDGE_JOINTS; j++) {
-        dxl_set_txpacket_parameter(2 + 3*j, jointIds[arm][j]);
-        dxl_set_txpacket_parameter(3 + 3*j, dxl_get_lowbyte(pos[j]));
-        dxl_set_txpacket_parameter(4 + 3*j, dxl_get_highbyte(pos[j]));
-    }
-    dxl_set_txpacket_length(3 * BRIDGE_JOINTS + 4);
-    dxl_txrx_packet();
-    result = dxl_get_result();
-    if (result != COMM_TXSUCCESS && result != COMM_RXSUCCESS) {
+    /* A failed/partial new write must not authorize an older target. */
+    arms[arm].targetValid = 0;
+    if (!Ax12WriteGoals(arm, pos)) {
         error("DXL_TX", arm); return 0;
     }
-    for (j = 0; j < BRIDGE_JOINTS; j++) arms[arm].last[j] = pos[j];
+    arms[arm].targetValid = 1;
     return 1;
 }
 
 static void process(void)
 {
     char *argv[8];
-    int argc, arm = -1, i, value, id = 0, count, joints, seq = 0, dt;
+    int argc, arm = -1, i, value;
     unsigned short pos[BRIDGE_JOINTS];
     ArmState *state;
     normalize(line);
@@ -160,76 +124,65 @@ static void process(void)
     if (argc == 1 && !*argv[0]) return;
     if (argc != 1) {
         upper(argv[1]);
-        if (equal(argv[1], "A")) arm = 0;
-        else if (equal(argv[1], "B")) arm = 1;
+        if (equal(argv[1], "ARM1")) arm = 0;
+        else if (equal(argv[1], "ARM2")) arm = 1;
     }
     if (argc < 0) { error("BAD_ARG", arm); return; }
-    if (equal(argv[0], "PING")) {
+    if (equal(argv[0], "PING") || equal(argv[0], "VERSION")) {
         if (argc != 1) error("BAD_ARG", arm);
-        else BridgeOutput("PONG\r\n");
+        else BridgeOutput(equal(argv[0], "PING") ? "PONG\r\n" : "VERSION,4\r\n");
         return;
     }
-    if (!equal(argv[0], "AX") && !equal(argv[0], "HOME") &&
-        !equal(argv[0], "STOP") && !equal(argv[0], "BEGIN") &&
-        !equal(argv[0], "PT") && !equal(argv[0], "END")) {
+    if (equal(argv[0], "LED")) {
+        if (arm < 0 || argc != 3) { error("BAD_ARG", arm); return; }
+        upper(argv[2]);
+        if (!equal(argv[2], "MOVING") && !equal(argv[2], "STOPPED")) {
+            error("BAD_ARG", arm); return;
+        }
+        /* Display only: allowed even when motor initialization has failed. */
+        BridgeSetArmLed(arm, equal(argv[2], "MOVING"));
+        BridgeOutput("OK,LED"); armTag(arm);
+        BridgeOutput(","); BridgeOutput(argv[2]); BridgeOutput("\r\n");
+        return;
+    }
+    if (!equal(argv[0], "AX") && !equal(argv[0], "TORQUE")) {
         error("BAD_CMD", arm); return;
     }
     if (arm < 0) { error("BAD_ARG", -1); return; }
+    if (!initialized) { error("INIT_FAILED", arm); return; }
     state = &arms[arm];
-    if (equal(argv[0], "BEGIN")) {
-        if (argc != 5 || !integer(argv[2], &id) || !integer(argv[3], &joints) ||
-            !integer(argv[4], &count) || joints != BRIDGE_JOINTS || count <= 0) {
+    if (equal(argv[0], "TORQUE")) {
+        if (argc != 3 || !integer(argv[2], &value) || (value != 0 && value != 1)) {
             error("BAD_ARG", arm); return;
         }
-        state->active = 1; state->trajId = id; state->expected = count; state->received = 0;
-        ok("BEGIN", arm, 1, id); return;
+        if (!value) state->targetValid = 0;
+        else if (!state->targetValid) { error("NO_TARGET", arm); return; }
+        if (!Ax12WriteTorque(arm, value)) { error("DXL_TX", arm); return; }
+        ok("TORQUE", arm, 1, value); return;
     }
-    if (equal(argv[0], "END")) {
-        if (argc != 3 || !integer(argv[2], &id)) { error("BAD_ARG", arm); return; }
-        if (!state->active || id != state->trajId || state->received != state->expected) {
-            error("BAD_TRAJ", arm); return;
-        }
-        state->active = 0; ok("END", arm, 1, id); return;
-    }
-    if (equal(argv[0], "HOME") || equal(argv[0], "STOP")) {
-        if (argc != 2) { error("BAD_ARG", arm); return; }
-        if (equal(argv[0], "STOP")) state->active = 0;
-        for (i = 0; i < BRIDGE_JOINTS; i++)
-            pos[i] = equal(argv[0], "HOME") ? 512 : state->last[i];
-        if (apply(arm, pos)) ok(argv[0], arm, 0, 0);
-        return;
-    }
-    if (equal(argv[0], "PT")) {
-        if (argc != 8 || !integer(argv[2], &seq) || !integer(argv[3], &dt)) {
-            error("BAD_ARG", arm); return;
-        }
-        if (!state->active || state->received >= state->expected || dt < 0) {
-            error("BAD_TRAJ", arm); return;
-        }
-        /* v15: seq is echoed; dt is reserved; no arrival wait/interpolation. */
-    } else if (argc != 3 && argc != 6) { error("BAD_ARG", arm); return; }
+    if (argc != 6) { error("BAD_ARG", arm); return; }
     for (i = 0; i < BRIDGE_JOINTS; i++) {
-        int offset = equal(argv[0], "PT") ? 4 + i : (argc == 3 ? 2 : 2 + i);
+        int offset = 2 + i;
         if (!integer(argv[offset], &value)) { error("BAD_ARG", arm); return; }
         if (value < 0 || value > 1023) { error("RANGE", arm); return; }
         pos[i] = (unsigned short)value;
     }
     if (!apply(arm, pos)) return;
-    if (equal(argv[0], "PT")) { state->received++; ok("PT", arm, 1, seq); }
-    else ok("AX", arm, 0, 0);
+    ok("AX", arm, 0, 0);
 }
 
 void BridgeInit(void)
 {
-    int arm, j;
+    int arm;
     used = discard = 0;
+    initialized = 1;
+    for (arm = 0; arm < BRIDGE_ARMS; arm++) BridgeSetArmLed(arm, 0);
     for (arm = 0; arm < BRIDGE_ARMS; arm++) {
-        arms[arm].active = arms[arm].trajId = arms[arm].expected = arms[arm].received = 0;
-        for (j = 0; j < BRIDGE_JOINTS; j++) {
-            arms[arm].torqueAttempted[j] = 0;
-            arms[arm].last[j] = 512;
-        }
+        arms[arm].targetValid = 0;
+        /* Always try both arms, even if the first transmission fails. */
+        if (!Ax12WriteTorque(arm, 0)) initialized = 0;
     }
+    BridgeOutput(initialized ? "READY,4\r\n" : "ERR,INIT_FAILED\r\n");
 }
 
 void BridgeAbortLine(void)

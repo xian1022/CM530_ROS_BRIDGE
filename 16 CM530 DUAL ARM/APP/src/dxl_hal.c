@@ -67,8 +67,8 @@ void dxl_hal_set_timeout( int NumRcvByte )
 	// Start stop watch
 	// NumRcvByte: number of recieving data(to calculate maximum waiting time)
 
-	//exceed range of int...
-	StartDiscount(NumRcvByte*100);
+    (void)NumRcvByte;
+    StartDiscount(DXL_RX_TIMEOUT_MS);
 }
 
 int dxl_hal_timeout(void)

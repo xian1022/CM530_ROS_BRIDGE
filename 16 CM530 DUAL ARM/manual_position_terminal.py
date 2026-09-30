@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CM530 v16 manual terminal. A/B is mandatory on every motion command."""
+"""CM530 v16 manual terminal. arm1/arm2 is mandatory on every motion command."""
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-JOINT_ORDER = {"A": (17, 3, 2, 15), "B": (12, 1, 8, 16)}
+JOINT_ORDER = {"arm1": (17, 3, 2, 15), "arm2": (12, 1, 8, 16)}
 LINE_ENDINGS = {"lf": b"\n", "cr": b"\r", "crlf": b"\r\n"}
 LOCAL_COMMANDS = {"?", "HELP", "DEMO", "Q", "QUIT", "EXIT"}
 
@@ -32,30 +32,36 @@ def normalize_user_input(text: str, arm: Optional[str] = None) -> Tuple[str, Opt
     try:
         if re.fullmatch(r"[+\-0-9,\s]+", raw):
             values = re.split(r"[,\s]+", raw)
-            if len(values) not in (1, 4):
-                raise ValueError("numeric shortcut requires one or four positions")
+            if len(values) != 4:
+                raise ValueError("numeric shortcut requires four positions")
             if arm not in JOINT_ORDER:
-                raise ValueError("numeric shortcuts require --arm A or --arm B")
+                raise ValueError("numeric shortcuts require --arm arm1 or --arm arm2")
             raw = "AX," + arm + "," + ",".join(values)
-        parts = [part.strip().upper() for part in raw.split(",")]
+        parts = [part.strip() for part in raw.split(",")]
+        parts[0] = parts[0].upper()
+        if len(parts) > 1:
+            parts[1] = parts[1].lower()
         command = parts[0]
-        if command == "PING":
+        if command in {"PING", "VERSION"}:
             if len(parts) != 1:
-                raise ValueError("PING takes no arguments")
-            return "send", "PING", None
-        if command not in {"AX", "HOME", "STOP", "BEGIN", "PT", "END"}:
+                raise ValueError(command + " takes no arguments")
+            return "send", command, None
+        if command not in {"AX", "TORQUE", "LED"}:
             raise ValueError("unknown command; enter ? for help")
         if len(parts) < 2 or parts[1] not in JOINT_ORDER:
-            raise ValueError("command must explicitly specify A or B")
-        counts = {"AX": (3, 6), "HOME": (2,), "STOP": (2,), "BEGIN": (5,), "PT": (8,), "END": (3,)}
+            raise ValueError("command must explicitly specify arm1 or arm2")
+        counts = {"AX": (6,), "TORQUE": (3,), "LED": (3,)}
         if len(parts) not in counts[command]:
             raise ValueError("wrong argument count; enter ? for help")
+        if command == "LED":
+            parts[2] = parts[2].upper()
+            if parts[2] not in {"MOVING", "STOPPED"}:
+                raise ValueError("LED requires MOVING or STOPPED")
+            return "send", ",".join(parts), None
         values = [parse_int(part) for part in parts[2:]]
-        if command == "BEGIN" and (values[1] != 4 or values[2] <= 0):
-            raise ValueError("BEGIN requires joint_count=4 and point_count>0")
-        if command == "PT" and values[1] < 0:
-            raise ValueError("PT dt_ms must be nonnegative")
-        positions = values if command == "AX" else values[2:] if command == "PT" else []
+        if command == "TORQUE" and values[0] not in (0, 1):
+            raise ValueError("TORQUE requires 0 or 1")
+        positions = values if command == "AX" else []
         if any(value < 0 or value > 1023 for value in positions):
             raise ValueError("position must be in 0..1023")
         normalized = ",".join(parts[:2] + [str(value) for value in values])
@@ -70,8 +76,10 @@ def expected_reply(command: str) -> str:
     parts = command.split(",")
     if parts[0] == "PING":
         return "PONG"
+    if parts[0] == "VERSION":
+        return "VERSION,4"
     reply = "OK," + ",".join(parts[:2])
-    if parts[0] in {"BEGIN", "PT", "END"}:
+    if parts[0] in {"TORQUE", "LED"}:
         reply += "," + parts[2]
     return reply
 
@@ -98,7 +106,6 @@ class Connection:
                 if self.buffer:
                     line = self.buffer.decode("ascii", errors="replace")
                     self.buffer.clear()
-                    print("RX <- " + line)
                     return line
             else:
                 self.buffer.extend(data)
@@ -110,13 +117,35 @@ class Connection:
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
             line = self.read_line(deadline)
-            if line is None or line == "READY":
-                return
+            if line is not None:
+                print("RX <- " + line)
+            if line is None or line == "READY,4":
+                break
             raise ProtocolError("unexpected startup response: " + line)
+        # READY may have been emitted before the serial port was opened.
+        self.send("VERSION")
+
+    def reject_pending_input(self):
+        # A previous ACK can leave its LF behind, but any other queued byte
+        # belongs to an unsolicited event or stale response, not a new request.
+        if self.buffer:
+            raise ProtocolError("partial unsolicited response before request")
+        drained = 0
+        while self.serial.in_waiting:
+            data = self.serial.read(min(self.serial.in_waiting, 257))
+            drained += len(data)
+            if not data or drained > 256:
+                raise ProtocolError("unexpected pending input before request")
+            if data.strip(b"\r\n"):
+                raise ProtocolError("unsolicited response before request: " +
+                                    data.decode("ascii", errors="replace").strip())
 
     def send(self, command):
         expected = expected_reply(command)
-        print("TX -> " + command)
+        self.reject_pending_input()
+        quiet = command.startswith("LED,")
+        if not quiet:
+            print("TX -> " + command)
         payload = command.encode("ascii") + self.line_end
         if self.char_delay:
             for byte in payload:
@@ -130,7 +159,9 @@ class Connection:
             line = self.read_line(deadline)
             if line is None:
                 raise ProtocolError("timeout waiting for " + expected)
-            if line == "READY":
+            if not quiet or line != expected:
+                print("RX <- " + line)
+            if line == "READY" or line.startswith("READY,"):
                 # During a request READY means the controller restarted.
                 raise ProtocolError("controller restarted during request")
             if line != expected:
@@ -139,33 +170,36 @@ class Connection:
 
 
 def demo_commands(arm=None):
-    selected = (arm,) if arm else ("A", "B")
+    selected = (arm,) if arm else ("arm1", "arm2")
     commands = ["PING"]
     for target in selected:
-        commands.extend(["HOME," + target, "BEGIN," + target + ",1,4,3"])
-    for seq, j1 in enumerate((512, 520, 512)):
+        commands.extend(["AX," + target + ",512,512,512,512", "TORQUE," + target + ",1"])
+    for j1 in (512, 520, 512):
         for target in selected:
-            commands.append("PT,{},{},300,{},512,512,512".format(target, seq, j1))
-    for target in selected:
-        commands.extend(["END," + target + ",1", "STOP," + target])
+            commands.append("AX,{},{},512,512,512".format(target, j1))
     return commands
 
 
 def run_demo(connection, arm=None):
     for command in demo_commands(arm):
         connection.send(command)  # Any mismatch/error/timeout aborts the sequence.
-        if command.startswith("PT,"):
+        if command.startswith("AX,"):
             time.sleep(0.3)  # Host pacing only; not evidence of physical arrival.
-        elif command.startswith("HOME,"):
+        elif command.startswith("TORQUE,") and command.endswith(",1"):
             time.sleep(1.0)
 
 
 def print_help():
-    print("PING | AX,A,512 | AX,B,520,512,512,512 | HOME,A | STOP,B")
-    print("BEGIN,B,1,4,3 | PT,B,0,300,512,512,512,512 | END,B,1")
-    print("Numeric shortcuts require --arm A/B. Explicit commands always name the arm.")
-    print("demo: small trajectory on --arm, or alternating A/B when no --arm; q: quit")
-    print("ACK means target sent, NOT arrival. STOP re-sends the last target.")
+    print("PING | VERSION | AX,arm1,512,512,512,512 | AX,arm2,520,512,512,512")
+    print("TORQUE,arm1,0 | TORQUE,arm1,1 (requires a fresh AX target)")
+    print("LED,arm1,MOVING | LED,arm1,STOPPED (normal LED TX/ACK output is hidden)")
+    print("LED displays host-reported state only; STOPPED does not stop motors; demo does not change LEDs.")
+    print("Four-number shortcuts require --arm arm1/arm2. Single-number shortcuts are unsupported.")
+    print("demo: direct goals on --arm, or alternating arm1/arm2 when no --arm; q: quit")
+    print("Protocol 4: motor ACK means packet sent; LED ACK means GPIO updated. Neither proves motion state.")
+    print("HOME/HOLD/BEGIN/PT/END/STOP are unsupported. No position readback is provided.")
+    print("demo uses example positions 512/520, explicitly enables torque and leaves it enabled.")
+    print("Check that these goals suit the mechanism before running demo; 512 is not a calibrated home.")
 
 
 def run_self_test():
@@ -182,7 +216,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", default="COM4")
     parser.add_argument("--baud", type=int, default=57600)
-    parser.add_argument("--arm", choices=("A", "B"))
+    parser.add_argument("--arm", type=str.lower, choices=("arm1", "arm2"))
     parser.add_argument("--timeout", type=float, default=2.0)
     parser.add_argument("--startup-listen", type=float, default=6.0)
     parser.add_argument("--line-end", choices=sorted(LINE_ENDINGS), default="lf")
@@ -198,7 +232,7 @@ def main():
     except ImportError:
         print("Install serial support: python -m pip install pyserial")
         return 2
-    print("CM530 v16 | A: {} | B: {}".format(JOINT_ORDER["A"], JOINT_ORDER["B"]))
+    print("CM530 v16 / protocol 4 | arm1: {} | arm2: {}".format(JOINT_ORDER["arm1"], JOINT_ORDER["arm2"]))
     print("Close RoboPlus and other programs using {}.".format(args.port))
     print_help()
     try:
@@ -213,7 +247,7 @@ def main():
             connection.startup(args.startup_listen)
             connection.send("PING")
             while True:
-                kind, command, error = normalize_user_input(input("A/B> "), args.arm)
+                kind, command, error = normalize_user_input(input("arm1/arm2> "), args.arm)
                 if error:
                     print("LOCAL ERR: " + error)
                     continue

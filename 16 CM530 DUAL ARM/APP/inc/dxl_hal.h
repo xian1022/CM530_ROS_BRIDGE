@@ -2,6 +2,11 @@
 #ifndef _DYNAMIXEL_HAL_HEADER
 #define _DYNAMIXEL_HAL_HEADER
 
+/* One bounded transaction deadline, in timer milliseconds. No retries. */
+#ifndef DXL_RX_TIMEOUT_MS
+#define DXL_RX_TIMEOUT_MS 50
+#endif
+
 
 #ifdef __cplusplus
 extern "C" {
