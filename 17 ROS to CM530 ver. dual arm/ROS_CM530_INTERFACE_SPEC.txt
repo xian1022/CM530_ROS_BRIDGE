@@ -1,0 +1,97 @@
+CM530 v17 / ROS serial protocol 5
+更新：2026-10-07
+
+1. 分工與硬體
+ROS 管理 state0..3、視覺、IK、軌跡時間、到位、B 區互鎖、C 區選格與復歸。
+CM530 僅執行底層命令。ESP32 控制吸盤。
+arm1 j1..j4 = 17,3,2,15；arm2 = 12,1,8,16。
+USART3 57600 8N1 無流控；USART1 DXL Protocol 1.0 1Mbps。
+
+2. 格式與節奏
+ASCII 半形逗號、十進位整數。命令/手臂不分大小寫，輸出手臂固定小寫。
+輸入接受 LF、CR、CRLF；輸出 CRLF。空白行不回覆。
+96-byte 行緩衝，最多 95 bytes 內容；多餘欄位、浮點、整數溢位與非法 arm 一律拒絕。
+僅容許 arm1/arm2，無 ALL/BOTH、A/B、單值 AX。
+主機同一埠一次只允許一筆待回覆命令；不可將兩個獨立 ROS 寫入者直接接同一埠。
+每筆非空命令一筆回覆，無定期遙測或 DONE 事件。READY 為開機事件。
+主機須檢查整行、命令、手臂、數量與值；未預期 READY/殘留 ACK/錯配/逾時一律中止本次操作，不自動重送。
+UART 丟資料或行超長：ERR,OVERFLOW，捨棄至下一行尾。
+
+3. 命令契約
+PING -> PONG
+VERSION -> VERSION,5
+AX,<arm>,<j1>,<j2>,<j3>,<j4> -> OK,AX,<arm>
+TORQUE,<arm>,<0|1> -> OK,TORQUE,<arm>,<0|1>
+LED,<arm>,<MOVING|STOPPED> -> OK,LED,<arm>,<MOVING|STOPPED>
+HOME,<arm> -> OK,HOME,<arm>
+GET_HOME,<arm> -> HOME,<arm>,<j1>,<j2>,<j3>,<j4>
+READ,<arm> -> POS,<arm>,<j1>,<j2>,<j3>,<j4>
+HOLD,<arm> -> OK,HOLD,<arm>
+
+位置一律 0..1023。HOME 使用 APP/inc/arm_config.h：
+home_A={512,512,512,512} -> arm1；home_C={512,512,512,512} -> arm2。
+GET_HOME 只查常數，無 DXL 封包、不建立目標資格，初始化失敗仍可用。
+HOME 使用與 AX 相同的 Goal Position(30) 四軸 SYNC_WRITE，不啟用 torque。
+READ 依 j1..j4 單播讀 Present Position(36)，每軸 2 bytes，第一個失敗即中止。
+只有四軸全部成功才回 POS；各軸取樣時間不同，不是原子快照。READ 不改目標資格。
+HOLD 先清除該臂資格，再執行全新四軸讀取，全部成功才 SYNC_WRITE 回剛讀的位置。
+HOLD 不自動 enable/disable torque，也不套用最後一次 AX 目標；失敗不補寫、不重試。
+成功 HOME/AX/HOLD 建立新目標資格；它們不表示到位或已停止，仍由 ROS 判斷。
+
+4. 開機、施力與 LED
+每次開機雙紅，依序對兩臂發 TORQUE=0，任一失敗仍嘗試另一臂。
+兩筆本地 TX 成功 -> READY,5；否則 ERR,INIT_FAILED，馬達命令鎖定至重啟。
+不自動 HOME、不發位置、不自動 torque-on。VERSION 不會解除初始化失敗。
+TORQUE=1 要求該臂有效目標；TORQUE=0 在傳送前清除資格，即使 TX 失敗也不恢復。
+AX/HOME 寫入失敗、HOLD 讀/寫失敗清除該臂資格；參數錯誤不改資格；另一臂不受影響。
+READ/GET_HOME 不變更資格。TORQUE=1 本地 TX 失敗不清資格，沿用 v16。
+LED 沿用 v16：arm1 PB13 綠/PB14 紅；arm2 PC14 綠/PC15 紅，active-low。
+開機雙紅；ROS 自行送 MOVING/STOPPED，動作命令與錯誤不自動切燈。
+LED 不是到位／急停訊號。退出、斷線、timeout 不自動 torque-off/HOME/HOLD。
+
+5. 錯誤
+ERR,BAD_CMD[,<arm>]：不支援命令，包括 BEGIN/PT/END/STOP。
+ERR,BAD_ARG[,<arm>]：欄位數、手臂、整數、torque 或 LED 格式錯誤。
+ERR,RANGE,<arm>：AX 或板內 HOME 目標超範圍。
+ERR,NO_TARGET,<arm>：尚無可供 TORQUE=1 啟用的有效目標。
+ERR,INIT_FAILED[,<arm>]：開機 TX 失敗鎖定；啟動回覆不附 arm。
+ERR,OVERFLOW：行緩衝溢位或 UART 丟資料。
+ERR,DXL_TX,<arm>：目標/torque SYNC_WRITE 本地 TX 失敗。
+ERR,DXL_TX,<arm>,<id>：READ/HOLD 的單顆 READ 指令 TX 失敗。
+ERR,DXL_TIMEOUT,<arm>,<id>：單顆讀取至 50 ms 沒有收到資料。
+ERR,DXL_CORRUPT,<arm>,<id>：ID、長度、checksum 錯誤或收取部分封包後到期。
+ERR,DXL_RX,<arm>,<id>：接收 HAL 失敗或其他非成功接收狀態。
+ERR,DXL_MOTOR,<arm>,<id>,<mask>：有效 status packet 的錯誤位元非零。
+ERR,DXL_RANGE,<arm>,<id>：回讀值不在 0..1023。
+mask 十進位完整錯誤位元遮罩：1 電壓、2 角度限制、4 過熱、8 範圍、16 checksum、32 過載、64 指令；128 保留但仍拒絕。
+
+優先順序：解析/多餘欄位 -> PING/VERSION/LED/GET_HOME 特例 -> 未知命令 -> arm -> 初始化鎖定 -> 命令參數 -> DXL。
+單顆回讀：transport -> 馬達 error bits -> 位置範圍；失敗不回 POS，不沿用上次值。
+任何 TX 失敗不能視為馬達一定沒有收到或沒有動作。
+
+6. ROS 串接範例
+開埠核對 VERSION,5，PING -> PONG；READY 可能在開埠前已輸出。
+GET_HOME,arm1 -> HOME,arm1,512,512,512,512
+HOME,arm1 -> OK,HOME,arm1
+TORQUE,arm1,1 -> OK,TORQUE,arm1,1
+READ,arm1 -> POS,arm1,<實測四軸>
+arm2 同樣流程。這只適用 ROS 已判斷可直接回 HOME 的路徑。
+需要避障時以 GET_HOME 作為 ROS 規劃終點，再送完整 AX 點列。ROS 決定時間，不把 ACK 當到位。
+到位：終點停止新增目標 -> 以 READ 取樣 -> 四軸誤差符合 ROS 容差且連續穩定 -> ROS 確認完成。
+總期限、採樣間隔、容差與穩定次數由 ROS 配置，非本韌體的 DONE 條件。
+HOLD 後同樣回讀/觀察確認；讀取至写入之間有延遲，不承諾瞬間停止或停止距離。
+
+流程圖對應：
+state0：ROS 觀察 A/B/C；CM530 不自行辨識供料/空格。
+state1：ROS 取料規劃、AX、READ，再控制吸盤；arm2 進 B 前先拿使用權。
+state2：arm1 進 B 放料前取得使用權；arm2 最小空格選擇由 ROS 執行。
+state3：ROS 返回路徑/適用時 HOME；位置與視覺確認後才釋放 B 區。
+C 區全滿：ROS 停止新增搬運，保留 B 餘料；人工清臺確認後重掃各區再續行。
+異常：停止新 AX、要求受影響臂 HOLD、維持 B 鎖定，人工/ROS 確認姿態與持物後復歸。
+
+7. 版本與部署
+v16 主機協定 4 客戶端需更新至 5；AX/TORQUE/LED 原意不變。
+保留 15/16 版資料夾。第17版不恢復舊單臂 HOME/STOP 或軌跡框架。
+馬達必須為關節模式，Status Return Level=1 或 2；不自動改 EEPROM。
+實機前確認 HOME 常數與路徑；HEX/BIN 起點 0x08003000，stack 0x20010000。
+詳見 README.md、VALIDATION.md、SHA256SUMS。
