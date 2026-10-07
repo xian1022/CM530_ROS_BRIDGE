@@ -58,7 +58,7 @@
 | 用途 | 文件 |
 |---|---|
 | 指令、測試終端、建置與燒錄 | [第 17 版操作說明](17%20ROS%20to%20CM530%20ver.%20dual%20arm/README.md) |
-| ROS 通訊串接 | [ROS–CM530 對接規格](17%20ROS%20to%20CM530%20ver.%20dual%20arm/ROS_CM530_INTERFACE_SPEC.txt) |
+| ROS 通訊串接 | [ROS–CM530 對接規格](17%20ROS%20to%20CM530%20ver.%20dual%20arm/ROS_CM530_INTERFACE_SPEC.md) |
 | HOME 位置調整 | [arm_config.h](17%20ROS%20to%20CM530%20ver.%20dual%20arm/APP/inc/arm_config.h) |
 | 測試結果與實機驗收清單 | [VALIDATION.md](17%20ROS%20to%20CM530%20ver.%20dual%20arm/VALIDATION.md) |
 | 程式分工 | [IMPLEMENTATION.md](17%20ROS%20to%20CM530%20ver.%20dual%20arm/IMPLEMENTATION.md) |

@@ -2,7 +2,7 @@
 
 **主機協定：5｜更新：2026-10-07**
 
-[系統分工與目前進度](../README.md) · [搬運流程圖](../docs/images/dual-arm-flowchart.png) · [ROS 對接規格](ROS_CM530_INTERFACE_SPEC.txt) · [驗收紀錄](VALIDATION.md)
+[系統分工與目前進度](../README.md) · [搬運流程圖](../docs/images/dual-arm-flowchart.png) · [ROS 對接規格](ROS_CM530_INTERFACE_SPEC.md) · [驗收紀錄](VALIDATION.md)
 
 ## 控制設定
 
@@ -57,7 +57,7 @@ HOME 集中於 [APP/inc/arm_config.h](APP/inc/arm_config.h)，校正後修改、
 5. 配合視覺確認取放及離區，再更新 B 區狀態與釋放使用權。
 6. 異常停止新軌跡，要求 HOLD 並保留 B 區鎖定；重新確認姿態、持物與各區狀態後再續行。
 
-回讀錯誤包含 `DXL_TIMEOUT`、`DXL_CORRUPT`、`DXL_MOTOR`、`DXL_RANGE`，附手臂與馬達 ID；每顆接收期限 50 ms、無重試。完整格式見 [對接規格](ROS_CM530_INTERFACE_SPEC.txt)。
+回讀錯誤包含 `DXL_TIMEOUT`、`DXL_CORRUPT`、`DXL_MOTOR`、`DXL_RANGE`，附手臂與馬達 ID；每顆接收期限 50 ms、無重試。完整格式見 [對接規格](ROS_CM530_INTERFACE_SPEC.md)。
 
 ## 手動測試
 
