@@ -1,8 +1,8 @@
 # 視覺導引雙臂協同搬運系統｜CM530_ROS_BRIDGE
 
-**目前版本：第 17 版｜主機協定：5｜更新：2026-10-07**
+**目前版本：第 17 版｜主機協定：5｜文件核對：2026-11-06**
 
-手臂 1 執行 **A → B**，手臂 2 執行 **B → C**，C 區依最小編號空格排列，共 2 × 4 格。本儲存庫提供 CM-530 韌體、測試終端與 ROS 對接規格。
+系統規劃由手臂 1 執行 **A → B**，手臂 2 執行 **B → C**，C 區依最小編號空格排列，共 2 × 4 格。本儲存庫提供 CM-530 韌體、測試終端與 ROS 對接規格。
 
 ## 系統分工
 
@@ -31,8 +31,8 @@
 ## 第 17 版重點
 
 - 保留雙臂 `AX`、`TORQUE`、`LED`，新增 `HOME`、`GET_HOME`、`READ`、`HOLD`。
-- `home_A`、`home_C` 四關節暫設為 **512、512、512、512**，後續依機構校正。
-- 開機不自動移動；ROS 明確下令並啟用 torque。
+- 目前原始碼 HOME：`home_A = 90,567,712,825`、`home_C = 590,567,712,825`（馬達原始位置值，不是角度）。設定值不代表已完成實機姿態驗收；板上值須以 `GET_HOME` 確認。
+- 開機不寫入位置目標，嘗試對兩臂送出 torque-off；移動由 ROS 明確下令。卸力不代表機構會保持不動。
 - **ACK 不等於到位**：ROS 使用位置回讀與視覺結果判斷下一階段。
 - HOLD 讀完四軸後才寫入保持目標；讀取失敗回報異常，不寫入部分目標。
 
@@ -48,8 +48,9 @@
 | 項目 | 狀態 |
 |---|---|
 | 第 17 版韌體、測試終端及對接文件 | 已完成 |
-| Python 25 項、C 邏輯與 LED 測試 | 離線通過 |
-| ARM 建置、HEX／BIN 一致性檢查 | 通過 |
+| Python 終端與 CLI 25 項 | 2026-11-06 離線重測通過 |
+| C 邏輯與 LED 測試、ARM 完整建置 | 2026-10-07 紀錄通過；本次未重跑／重建 |
+| 現有 ELF／HEX／BIN 一致性與 SHA256SUMS | 2026-11-06 檢查通過；不代表已由目前原始碼重新建置 |
 | 第 17 版燒錄、HOME 校正、READ／HOLD 實機動作 | 待驗證 |
 | 視覺、雙臂交接、B 區互鎖、八格排列及吸盤整合 | 待系統整合驗證 |
 
@@ -60,7 +61,10 @@
 | 指令、測試終端、建置與燒錄 | [第 17 版操作說明](17%20ROS%20to%20CM530%20ver.%20dual%20arm/README.md) |
 | ROS 通訊串接 | [ROS–CM530 對接規格](17%20ROS%20to%20CM530%20ver.%20dual%20arm/ROS_CM530_INTERFACE_SPEC.md) |
 | HOME 位置調整 | [arm_config.h](17%20ROS%20to%20CM530%20ver.%20dual%20arm/APP/inc/arm_config.h) |
-| 測試結果與實機驗收清單 | [VALIDATION.md](17%20ROS%20to%20CM530%20ver.%20dual%20arm/VALIDATION.md) |
+| 所有驗證與測試彙整 | [驗證與測試總整理](驗證與測試總整理.md) |
+| 貢獻與開發規範 | [AGENTS.md](AGENTS.md) |
+| HOME 校正資料收集 | [HOME_CALIBRATION_TEST.md](17%20ROS%20to%20CM530%20ver.%20dual%20arm/HOME_CALIBRATION_TEST.md) |
+| 第 17 版歷史測試與實機驗收清單 | [VALIDATION.md](17%20ROS%20to%20CM530%20ver.%20dual%20arm/VALIDATION.md) |
 | 程式分工 | [IMPLEMENTATION.md](17%20ROS%20to%20CM530%20ver.%20dual%20arm/IMPLEMENTATION.md) |
 | 燒錄檔案 | [CM530.hex](17%20ROS%20to%20CM530%20ver.%20dual%20arm/CM530.hex)／[CM530.bin](17%20ROS%20to%20CM530%20ver.%20dual%20arm/CM530.bin) |
 

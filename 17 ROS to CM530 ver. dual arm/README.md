@@ -1,17 +1,17 @@
 # 第 17 版｜ROS to CM530 ver. dual arm
 
-**主機協定：5｜更新：2026-10-07**
+**主機協定：5｜文件核對：2026-11-06**
 
-[系統分工與目前進度](../README.md) · [搬運流程圖](../docs/images/dual-arm-flowchart.png) · [ROS 對接規格](ROS_CM530_INTERFACE_SPEC.md) · [驗收紀錄](VALIDATION.md)
+[系統分工與目前進度](../README.md) · [搬運流程圖](../docs/images/dual-arm-flowchart.png) · [ROS 對接規格](ROS_CM530_INTERFACE_SPEC.md) · [驗證與測試總整理](../驗證與測試總整理.md) · [歷史驗收紀錄](VALIDATION.md)
 
 ## 控制設定
 
-| 手臂 | 搬運區域 | j1、j2、j3、j4 馬達 ID | HOME 初值 |
+| 手臂 | 搬運區域 | j1、j2、j3、j4 馬達 ID | 目前原始碼 HOME（原始位置值） |
 |---|---|---|---|
-| arm1 | A → B | 17、3、2、15 | home_A：512、512、512、512 |
-| arm2 | B → C | 12、1、8、16 | home_C：512、512、512、512 |
+| arm1 | A → B | 17、3、2、15 | home_A：90、567、712、825 |
+| arm2 | B → C | 12、1、8、16 | home_C：590、567、712、825 |
 
-HOME 集中於 [APP/inc/arm_config.h](APP/inc/arm_config.h)，校正後修改、重建並燒錄。需避障的回程由 ROS 取得 GET_HOME 值後規劃，透過 AX 逐點執行。
+HOME 集中於 [APP/inc/arm_config.h](APP/inc/arm_config.h)。上述數值不是角度，也不代表已完成實機校正；板上設定須逐臂以 `GET_HOME` 確認。量測流程見 [HOME 校正資料收集](HOME_CALIBRATION_TEST.md)，確認數值後修改 header、重建、驗證並燒錄。需避障的回程由 ROS 取得 GET_HOME 值後規劃，透過 AX 逐點執行。
 
 | 通訊 | 設定 |
 |---|---|
@@ -22,7 +22,7 @@ HOME 集中於 [APP/inc/arm_config.h](APP/inc/arm_config.h)，校正後修改、
 
 ## 指令速查
 
-以下 arm1 可替換為 arm2。每筆命令等待完整回覆後才送下一筆；位置範圍為 0～1023，回覆以 CRLF 結尾。
+以下 arm1 可替換為 arm2。每筆命令等待完整回覆後才送下一筆；位置參數範圍為 0～1023，不代表機構可安全走完整個範圍。命令可用 LF／CR／CRLF 結尾，回覆以 CRLF 結尾。
 
 | 命令 | 成功回覆 | 用途 |
 |---|---|---|
@@ -30,7 +30,7 @@ HOME 集中於 [APP/inc/arm_config.h](APP/inc/arm_config.h)，校正後修改、
 | `VERSION` | `VERSION,5` | 協定核對 |
 | `AX,arm1,512,512,512,512` | `OK,AX,arm1` | 四軸目標 |
 | `HOME,arm1` | `OK,HOME,arm1` | 寫入該臂 HOME |
-| `GET_HOME,arm1` | `HOME,arm1,512,512,512,512` | 查詢 HOME 設定 |
+| `GET_HOME,arm1` | `HOME,arm1,90,567,712,825` | 查詢 HOME 設定 |
 | `READ,arm1` | `POS,arm1,j1,j2,j3,j4` | 回讀四軸位置 |
 | `HOLD,arm1` | `OK,HOLD,arm1` | 全部回讀成功後寫為保持目標 |
 | `TORQUE,arm1,1` | `OK,TORQUE,arm1,1` | 啟用施力，需先有有效目標 |
@@ -38,9 +38,11 @@ HOME 集中於 [APP/inc/arm_config.h](APP/inc/arm_config.h)，校正後修改、
 | `LED,arm1,MOVING` | `OK,LED,arm1,MOVING` | 綠亮紅滅 |
 | `LED,arm1,STOPPED` | `OK,LED,arm1,STOPPED` | 紅亮綠滅 |
 
+`GET_HOME,arm2` 對應目前原始碼的回覆為 `HOME,arm2,590,567,712,825`；板上若是舊映像，數值可能不同。表中的 AX 512 是格式範例，不是目前 HOME。
+
 **操作要點：**
 
-- AX／HOME／HOLD 不自動啟用 torque；ACK 只代表本地處理或傳送成功，到位由 ROS 判斷。
+- AX／HOME／HOLD 不自動啟用 torque；若 torque 已啟用，寫入目標即可造成動作。ACK 只代表本地處理或傳送成功，到位由 ROS 判斷。
 - READ 四軸依序取樣；任一讀取失敗即回報錯誤，不回傳部分資料。HOLD 讀／寫失敗會清除該臂目標資格。
 - HOLD 有取樣及傳輸延遲，不是硬體急停；torque 關閉時 HOLD 不會重新啟用。
 - 開機雙紅待命；LED 由 ROS 明確設定，STOPPED 不會停止馬達。
@@ -50,14 +52,14 @@ HOME 集中於 [APP/inc/arm_config.h](APP/inc/arm_config.h)，校正後修改、
 
 ## ROS 執行順序
 
-1. 開機送雙臂 torque-off，成功回覆 `READY,5`；初始化失敗鎖定馬達命令至重啟。
+1. 韌體開機嘗試送出雙臂 torque-off，兩筆傳送成功才輸出 `READY,5`；此訊息不證明馬達實際已卸力。初始化失敗輸出 `ERR,INIT_FAILED`，鎖定 AX／TORQUE／HOME／READ／HOLD 至重啟；PING／VERSION／LED／GET_HOME 仍可用。
 2. 主機核對 `VERSION,5`、`PONG`，查詢 `GET_HOME`。重新開埠不代表馬達已卸力。
-3. 確認路徑可直接回 HOME 時，送 `HOME`，等 OK 後送 `TORQUE,1`；需要避障則由 ROS 規劃 AX 點列。
+3. 確認路徑可直接回 HOME 時，送 `HOME,arm1`，等 OK 後送 `TORQUE,arm1,1`（另一臂改用 arm2）；需要避障則由 ROS 規劃 AX 點列。
 4. ROS 依軌跡時間逐點送 AX；終點以 READ 檢查位置誤差、穩定次數及期限。
 5. 配合視覺確認取放及離區，再更新 B 區狀態與釋放使用權。
 6. 異常停止新軌跡，要求 HOLD 並保留 B 區鎖定；重新確認姿態、持物與各區狀態後再續行。
 
-回讀錯誤包含 `DXL_TIMEOUT`、`DXL_CORRUPT`、`DXL_MOTOR`、`DXL_RANGE`，附手臂與馬達 ID；每顆接收期限 50 ms、無重試。完整格式見 [對接規格](ROS_CM530_INTERFACE_SPEC.md)。
+回讀錯誤包含 `DXL_TX`、`DXL_RX`、`DXL_TIMEOUT`、`DXL_CORRUPT`、`DXL_MOTOR`、`DXL_RANGE`，附手臂與馬達 ID；每顆接收期限 50 ms、無重試。完整格式見 [對接規格](ROS_CM530_INTERFACE_SPEC.md)。
 
 ## 手動測試
 
@@ -68,7 +70,7 @@ python -m pip install -r requirements.txt
 python manual_position_terminal.py --port COM4 --arm arm1
 ```
 
-輸入 `?` 查指令、`q` 離開。指定 --arm 後可輸入四數字快捷 AX。正常 LED 收發不顯示，但仍核對回覆。`demo` 會執行 512→520→512 範例、啟用 torque 且結束不卸力，使用前確認機構允許。
+輸入 `?` 查指令、`q` 離開。指定 --arm 後可輸入四數字快捷 AX。正常 LED 收發不顯示，但仍核對回覆。`demo` 先寫四軸 512 並啟用 torque，再讓 j1 執行 512→520→512，其餘三軸維持 512；這不是 HOME 流程。指定 `--arm` 時只操作該臂，未指定則交替操作兩臂；結束不卸力，使用前確認所有範例目標與路徑適合機構。
 
 ## 建置與驗證
 
@@ -83,4 +85,4 @@ python manual_position_terminal.py --self-test
 
 燒錄檔：[CM530.hex](CM530.hex)／[CM530.bin](CM530.bin)，Flash 起點 **0x08003000**，使用既有 CM-530 bootloader 流程。修改韌體後需重建、驗證並更新 [SHA256SUMS](SHA256SUMS)。
 
-Python 25 項、C 邏輯／LED 測試及 ARM 映像檢查已離線通過；**第 17 版尚待燒錄與實機驗收**。測試限制及待驗項目見 [VALIDATION.md](VALIDATION.md)。
+2026-11-06 重新執行 Python 25 項測試與現有 ELF／HEX／BIN 驗證均通過，三份產物雜湊符合 SHA256SUMS。本次未重跑 C harness 或 ARM 完整建置；其通過結果來自 2026-10-07 的歷史紀錄，不能據此宣稱目前原始碼已完整重測。**第 17 版燒錄、HOME 姿態與 READ／HOLD 實機驗收仍待確認**。最新檢查集中於 [驗證與測試總整理](../驗證與測試總整理.md)，歷史限制見 [VALIDATION.md](VALIDATION.md)。
