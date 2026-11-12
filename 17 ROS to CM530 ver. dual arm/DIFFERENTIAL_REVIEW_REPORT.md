@@ -65,3 +65,8 @@ HOME 建置依賴修正前 make -n -W APP/inc/arm_config.h 顯示 up to date；�
 未跑 comprehensive c-review：目標是 bare-metal 韌體，該工作流程排除此類專案。本次不是安全漏洞修補，不宣稱執行 post-patch-validation 的完整 exploit 工作流程。
 
 原廠 HAL/vector 10 個既有 ARM 警告、UART 實體噪聲／電氣問題、馬達接收與動作、ISR 時序、機構碰撞與停止距離均仍需實機驗收。沒有已確認但未修正的新增執行缺陷。
+
+
+## 2026-11-13：重建產物差異核對
+
+本次未修改 C 原始碼；完整重建 HEX/BIN，驗證 ELF/HEX/BIN 一致性及兩個 HOME 符號的實際數值皆為 256,512,512,512。已更新校驗碼及文件，取代同日先前尚未重建的狀態；詳細命令與雜湊見驗證與測試總整理.md。未進行新的 C harness、ASan 或實機驗收。

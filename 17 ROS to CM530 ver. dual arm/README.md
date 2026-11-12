@@ -87,4 +87,4 @@ python manual_position_terminal.py --self-test
 
 2026-11-06 重新執行 Python 25 項測試與現有 ELF／HEX／BIN 驗證均通過，三份產物雜湊符合 SHA256SUMS。本次未重跑 C harness 或 ARM 完整建置；其通過結果來自 2026-10-07 的歷史紀錄，不能據此宣稱目前原始碼已完整重測。**第 17 版燒錄、HOME 姿態與 READ／HOLD 實機驗收仍待確認**。最新檢查集中於 [驗證與測試總整理](../驗證與測試總整理.md)，歷史限制見 [VALIDATION.md](VALIDATION.md)。
 
-2026-11-13：兩組 HOME 原始碼已改為 256,512,512,512；現有 HEX/BIN 尚未依此設定重建。
+2026-11-13：兩組 HOME 已改為 256,512,512,512；HEX/BIN 已完整重建，映像一致性、HOME 常數與 SHA256SUMS 核對通過，尚未燒錄。

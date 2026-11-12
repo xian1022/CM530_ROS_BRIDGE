@@ -92,3 +92,25 @@ B/C 及吸盤項目是系統整合驗收，並非本韌體自動提供的功能�
 獨立審查未確認新的執行缺陷；已更新舊驗證文件/終端 banner 並加入 arm_config.h 增量建置依賴。修改 HOME header 後 make dry-run 會重編 bridge.o。
 
 依新個人指示另套用 Trail of Bits C API 與差異審查，報告見 DIFFERENTIAL_REVIEW_REPORT.md。AddressSanitizer 嘗試因 Windows Zig 缺少 __asan_* runtime 連結失敗，WSL 無 gcc/clang，故 ASan **未執行成功**；未進行 coverage-guided fuzzing 或量測覆蓋率。
+
+## 2026-11-13：HOME 韌體完整重建完成
+
+先前沙箱內工具啟動失敗後，本次在沙箱外使用既有 Arm GNU Toolchain 14.2 rel1 與 make 完整重建成功，未修改 C 原始碼。命令（於第 17 版目錄）：
+
+```powershell
+make -B TCHAIN_PREFIX=arm-none-eabi- "COMPILE_OPTS=-mcpu=cortex-m3 -mthumb -Wall -g -Os -fno-common -fno-strict-aliasing -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion" CM530.hex CM530.bin
+& 'C:/Users/39165/AppData/Local/Python/pythoncore-3.14-64/python.exe' tests/verify_firmware.py
+arm-none-eabi-nm -S CM530.elf
+```
+
+- 完整建置成功；10 個既有 SDK 警告，詳細輸出在本機忽略的 build.log。
+- verify_firmware.py 通過：ELF/HEX/BIN 一致、HEX checksum、向量、ID 與協定 5 標記。
+- nm 確認 home_A=0x0800600c、home_C=0x08006014，皆為 8 bytes；以 Flash 基址 0x08003000 換算 BIN 偏移，Python struct.unpack_from('<4H', ...) 解碼兩組均為 (256,512,512,512)，斷言通過。
+- 已更新 SHA256SUMS，ELF 本機保留且被 Git 忽略，HEX/BIN 納入提交。
+- 本次未重跑 C harness 或 ASan；Python 25 項通過結果見本日先前紀錄。未燒錄或操作實機。
+
+| 產物 | bytes | SHA256 |
+|---|---:|---|
+| CM530.elf | 147760 | 208078b6202f753ff2d61cce9681d2d30a2726451e7e19f2e87a9099541550c5 |
+| CM530.hex | 35532 | 7153e9022691545f70269dceabde59a373fe64ed1b4abc709a01129a6471c063 |
+| CM530.bin | 12612 | f53ddc2649e7bf4e6f2c412bfc03a817b02f6562d8acb1906a588ee5890431b2 |
