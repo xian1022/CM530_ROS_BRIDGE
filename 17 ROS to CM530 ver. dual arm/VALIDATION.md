@@ -1,5 +1,35 @@
 # 第 17 版／協定 5 驗證紀錄
 
+## 2026-11-13：HOME 設定更新
+
+home_A、home_C 原始碼及 C 測試預期均更新為 256,512,512,512，並同步使用文件。Python 終端 25/25 測試通過；git diff --check 通過。ARM 工具無法啟動（系統 DLL 重新定位不正確），未完成韌體重建，現有 HEX/BIN 與 SHA256SUMS 仍屬前次設定。主機 gcc/clang 與原 Zig 路徑不可用，未執行 C 主機測試或 ASan；未燒錄或操作實機。以下為歷史驗證紀錄。
+
+
+## 2026-10-25：HOME 暫定觀察姿態更新
+
+home_A 與 home_C 均改為 **512,205,512,205**。暫定 j1～j4 由下到上，兩臂須分別實機校正。以下均為離線驗證，未燒錄或驅動手臂；下方 2026-10-07 紀錄中的全 512 為歷史設定。
+
+| 項目 | 本次結果 |
+|---|---|
+| Python 終端與 CLI | 25/25 通過 |
+| C bridge/AX12/SDK 與 LED GPIO 模擬測試 | 全通過，gnu89、Wall/Wextra/Werror |
+| 兩臂 HOME/GET_HOME | 回覆與 SYNC_WRITE 均核對 512,205,512,205；不自動 torque-on |
+| ARM 完整重建 | 成功，保留原有 10 個 SDK 警告 |
+| ELF/HEX/BIN 一致性、HEX checksum、向量、ID 與協定標記 | 通過 |
+| 映像 HOME 常數 | nm 確認 home_A=0x0800600c、home_C=0x08006014，各 8 bytes；BIN 按 little-endian 四個 unsigned short 解碼均等於新設定 |
+| SHA256SUMS | 已更新 ELF/HEX/BIN 三筆雜湊；BIN 仍為 12612 bytes |
+| 實機視野、限位、持物遮擋與回程避障 | 尚未驗證 |
+
+沿用下方 ARM 建置與映像驗證命令。本次 Python 使用實際執行檔避開無法啟動的 WindowsApps 別名；舊 Zig 暫存安裝缺少支援檔案，於獨立暫存位置安裝相同 0.13.0 版本後執行：
+
+```powershell
+./tests/run_tests.ps1 -Python "C:/Users/39165/AppData/Local/Python/pythoncore-3.14-64/python.exe" -Compiler "C:/Users/39165/AppData/Local/Temp/cm530-home-20261025-tools/ziglang/zig.exe" -CompilerArgs cc
+```
+
+ARM 建置與 Zig 測試需在沙箱外執行以避免工具啟動／快取重新命名受限。本次未執行 ASan 或 fuzzing；本次差異審查見 DIFFERENTIAL_REVIEW_REPORT.md 的 2026-10-25 段落。
+
+## 2026-10-07 原始驗證紀錄
+
 日期：2026-10-07。以下為離線測試，**未連接、燒錄或操作控制板及馬達**。
 
 ## 測試結果

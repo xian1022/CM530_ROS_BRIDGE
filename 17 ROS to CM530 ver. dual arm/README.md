@@ -1,6 +1,6 @@
 # 第 17 版｜ROS to CM530 ver. dual arm
 
-**主機協定：5｜更新：2026-10-07**
+**主機協定：5｜更新：2026-10-25**
 
 [系統分工與目前進度](../README.md) · [搬運流程圖](../docs/images/dual-arm-flowchart.png) · [ROS 對接規格](ROS_CM530_INTERFACE_SPEC.md) · [驗收紀錄](VALIDATION.md)
 
@@ -8,8 +8,10 @@
 
 | 手臂 | 搬運區域 | j1、j2、j3、j4 馬達 ID | HOME 初值 |
 |---|---|---|---|
-| arm1 | A → B | 17、3、2、15 | home_A：512、512、512、512 |
-| arm2 | B → C | 12、1、8、16 | home_C：512、512、512、512 |
+| arm1 | A → B | 17、3、2、15 | home_A：256、512、512、512 |
+| arm2 | B → C | 12、1、8、16 | home_C：256、512、512、512 |
+
+兩組 HOME 為尚未校正的觀察姿態：home_A 預計觀察 A 區，home_C 預計觀察 C 區。暫定 j1～j4 由下到上，兩臂先共用數值，之後分別實機校正；不保證鏡頭朝向、工作區視野或回程無碰撞。
 
 HOME 集中於 [APP/inc/arm_config.h](APP/inc/arm_config.h)，校正後修改、重建並燒錄。需避障的回程由 ROS 取得 GET_HOME 值後規劃，透過 AX 逐點執行。
 
@@ -30,7 +32,7 @@ HOME 集中於 [APP/inc/arm_config.h](APP/inc/arm_config.h)，校正後修改、
 | `VERSION` | `VERSION,5` | 協定核對 |
 | `AX,arm1,512,512,512,512` | `OK,AX,arm1` | 四軸目標 |
 | `HOME,arm1` | `OK,HOME,arm1` | 寫入該臂 HOME |
-| `GET_HOME,arm1` | `HOME,arm1,512,512,512,512` | 查詢 HOME 設定 |
+| `GET_HOME,arm1` | `HOME,arm1,256,512,512,512` | 查詢 HOME 設定 |
 | `READ,arm1` | `POS,arm1,j1,j2,j3,j4` | 回讀四軸位置 |
 | `HOLD,arm1` | `OK,HOLD,arm1` | 全部回讀成功後寫為保持目標 |
 | `TORQUE,arm1,1` | `OK,TORQUE,arm1,1` | 啟用施力，需先有有效目標 |

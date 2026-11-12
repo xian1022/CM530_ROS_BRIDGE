@@ -236,11 +236,11 @@ static void test_v17(void)
     char cmd[80],want[120];
     for(arm=0;arm<2;arm++){
         boot();before=packetCount;
-        sprintf(cmd,"GET_HOME,arm%d",arm+1);sprintf(want,"HOME,arm%d,512,512,512,512\r\n",arm+1);
+        sprintf(cmd,"GET_HOME,arm%d",arm+1);sprintf(want,"HOME,arm%d,256,512,512,512\r\n",arm+1);
         reject(cmd,want);
         sprintf(cmd,"TORQUE,arm%d,1",arm+1);sprintf(want,"ERR,NO_TARGET,arm%d\r\n",arm+1);reject(cmd,want);
         sprintf(cmd,"HOME,arm%d",arm+1);sprintf(want,"OK,HOME,arm%d\r\n",arm+1);command(cmd,want);
-        CHECK(packetCount==before+1);syncPacket(before,arm,30,512,512,512,512);
+        CHECK(packetCount==before+1);syncPacket(before,arm,30,256,512,512,512);
         sprintf(cmd,"TORQUE,arm%d,1",arm+1);sprintf(want,"OK,TORQUE,arm%d,1\r\n",arm+1);command(cmd,want);
         before=packetCount;
         sprintf(cmd,"READ,arm%d",arm+1);sprintf(want,"POS,arm%d,%d,%d,%d,%d\r\n",arm+1,400+ids[arm][0],400+ids[arm][1],400+ids[arm][2],400+ids[arm][3]);command(cmd,want);
@@ -271,7 +271,7 @@ static void test_v17(void)
     reject("READ,arm1,0","ERR,BAD_ARG,arm1\r\n");reject("HOME","ERR,BAD_ARG\r\n");
     reject("GET_HOME,ALL","ERR,BAD_ARG\r\n");reject("HOLD,arm2,1","ERR,BAD_ARG,arm2\r\n");
     boot();packetCount=0;failTxAt=1;BridgeInit();
-    reject("GET_HOME,arm1","HOME,arm1,512,512,512,512\r\n");
+    reject("GET_HOME,arm1","HOME,arm1,256,512,512,512\r\n");
     reject("HOME,arm1","ERR,INIT_FAILED,arm1\r\n");reject("READ,arm1","ERR,INIT_FAILED,arm1\r\n");reject("HOLD,arm1","ERR,INIT_FAILED,arm1\r\n");
 }
 int main(int argc,char **argv)
