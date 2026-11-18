@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-The active firmware is in `17 ROS to CM530 ver. dual arm/` (serial protocol 5). Numbered directories `01`–`16` preserve examples and earlier implementations; avoid changing them unless explicitly required.
+The active firmware is in `18 ROS to CM530 ver. dual arm/` (serial protocol 6, 1 Mbps host link, AX carries Moving Speed). Numbered directories `01`–`17` preserve examples and earlier implementations; avoid changing them unless explicitly required.
 
 - `APP/src/` and `APP/inc/`: bridge parser, AX12 control, LED adapter, and configuration headers.
 - `stm32f10x_lib/`: vendor STM32 SDK; keep vendor changes narrowly scoped.

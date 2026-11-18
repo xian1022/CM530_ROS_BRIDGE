@@ -1,6 +1,6 @@
 # 視覺導引雙臂協同搬運系統｜CM530_ROS_BRIDGE
 
-**目前版本：第 17 版｜主機協定：5｜文件核對：2026-11-13**
+**目前版本：第 18 版｜主機協定：6｜文件核對：2026-11-18**
 
 系統規劃由手臂 1 執行 **A → B**，手臂 2 執行 **B → C**，C 區依最小編號空格排列，共 2 × 4 格。本儲存庫提供 CM-530 韌體、測試終端與 ROS 對接規格。
 
@@ -28,6 +28,13 @@
 
 [開啟完整解析度流程圖](docs/images/dual-arm-flowchart.png)
 
+## 第 18 版重點（2026-11-18）
+
+- 每次寫入目標都同時寫入 AX-12A 的 Moving Speed。AX 可以多帶四個速度（1～1023），不帶時以及 HOME、HOLD 都用預設 100（約 67°/s）；速度 0（全速、不控速）會被拒絕。
+- 主機序列埠改成 **1 Mbps**；協定版本 6。
+- HOME 改成板子 2026-11-13 實際回覆的值：兩臂都是 256、512、512、512。
+- 第 18 版尚未燒錄；實機驗收待執行。第 17 版保留在原目錄，可以隨時燒回。
+
 ## 第 17 版重點
 
 - 保留雙臂 `AX`、`TORQUE`、`LED`，新增 `HOME`、`GET_HOME`、`READ`、`HOLD`。
@@ -41,12 +48,14 @@
 | arm1 | 17 | 3 | 2 | 15 | home_A |
 | arm2 | 12 | 1 | 8 | 16 | home_C |
 
-主機序列埠：**57600 baud、8N1**；馬達：**1 Mbps、DYNAMIXEL Protocol 1.0**。兩臂共用連線，命令逐筆發送並核對回覆。
+主機序列埠：第 18 版 **1 Mbps**（第 17 版 57600）、8N1；馬達：**1 Mbps、DYNAMIXEL Protocol 1.0**。兩臂共用連線，命令逐筆發送並核對回覆。
 
 ## 目前進度
 
 | 項目 | 狀態 |
 |---|---|
+| 第 18 版韌體、測試終端及對接文件 | 已完成；ARM 建置與主機測試 2026-11-18 通過 |
+| 第 18 版燒錄、1 Mbps 連線、速度控制實機動作 | 待驗證 |
 | 第 17 版韌體、測試終端及對接文件 | 已完成 |
 | Python 終端與 CLI 25 項 | 2026-11-06 離線重測通過 |
 | C 邏輯與 LED 測試、ARM 完整建置 | 2026-10-07 紀錄通過；本次未重跑／重建 |
@@ -58,16 +67,16 @@
 
 | 用途 | 文件 |
 |---|---|
-| 指令、測試終端、建置與燒錄 | [第 17 版操作說明](17%20ROS%20to%20CM530%20ver.%20dual%20arm/README.md) |
-| ROS 通訊串接 | [ROS–CM530 對接規格](17%20ROS%20to%20CM530%20ver.%20dual%20arm/ROS_CM530_INTERFACE_SPEC.md) |
-| HOME 位置調整 | [arm_config.h](17%20ROS%20to%20CM530%20ver.%20dual%20arm/APP/inc/arm_config.h) |
+| 指令、測試終端、建置與燒錄 | [第 18 版操作說明](18%20ROS%20to%20CM530%20ver.%20dual%20arm/README.md)（第 17 版：[操作說明](17%20ROS%20to%20CM530%20ver.%20dual%20arm/README.md)） |
+| ROS 通訊串接 | [ROS–CM530 對接規格](18%20ROS%20to%20CM530%20ver.%20dual%20arm/ROS_CM530_INTERFACE_SPEC.md) |
+| HOME 位置調整 | [arm_config.h](18%20ROS%20to%20CM530%20ver.%20dual%20arm/APP/inc/arm_config.h) |
 | 所有驗證與測試彙整 | [驗證與測試總整理](驗證與測試總整理.md) |
 | 貢獻與開發規範 | [AGENTS.md](AGENTS.md) |
 | HOME 校正資料收集 | [HOME_CALIBRATION_TEST.md](17%20ROS%20to%20CM530%20ver.%20dual%20arm/HOME_CALIBRATION_TEST.md) |
 | 第 17 版歷史測試與實機驗收清單 | [VALIDATION.md](17%20ROS%20to%20CM530%20ver.%20dual%20arm/VALIDATION.md) |
 | 程式分工 | [IMPLEMENTATION.md](17%20ROS%20to%20CM530%20ver.%20dual%20arm/IMPLEMENTATION.md) |
-| 燒錄檔案 | [CM530.hex](17%20ROS%20to%20CM530%20ver.%20dual%20arm/CM530.hex)／[CM530.bin](17%20ROS%20to%20CM530%20ver.%20dual%20arm/CM530.bin) |
+| 燒錄檔案 | 第 18 版 [CM530.hex](18%20ROS%20to%20CM530%20ver.%20dual%20arm/CM530.hex)／[CM530.bin](18%20ROS%20to%20CM530%20ver.%20dual%20arm/CM530.bin) |
 
-`01`～`11` 為原廠功能範例，`12`～`16` 保留歷史版本；目前開發與測試使用第 17 版。
+`01`～`11` 為原廠功能範例，`12`～`17` 保留歷史版本；目前開發與測試使用第 18 版。
 
-2026-11-13：兩組 HOME 已改為 256,512,512,512；HEX/BIN 已完整重建，映像一致性、HOME 常數與 SHA256SUMS 核對通過，尚未燒錄。
+第 17 版 2026-11-13：兩組 HOME 已改為 256,512,512,512；HEX/BIN 已完整重建，映像一致性、HOME 常數與 SHA256SUMS 核對通過，尚未燒錄。
