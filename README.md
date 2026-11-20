@@ -1,12 +1,14 @@
 # CM530_ROS_BRIDGE｜CM-530 雙臂 AX-12A 橋接韌體
 
-**目前版本：第 18 版｜主機序列協定：6｜主機連線：1 Mbps｜文件核對：2026-11-18**
+**目前版本：第 19 版｜主機序列協定：7｜主機連線：1 Mbps｜文件核對：2026-11-20**
 
 這是 ROBOTIS CM-530 控制板的自製韌體，屬於「視覺導引雙臂協同搬運系統」。CM-530 夾在 ROS 主機（NVIDIA Jetson AGX Orin）和兩支四軸 AX-12A 手臂之間：主機用一條 USB 序列線送文字指令，CM-530 驗證指令後，透過 DYNAMIXEL 匯流排寫入馬達目標、讀回位置，再回覆結果。
 
 韌體本身**不做**路徑規劃、插值、到位判斷或軌跡排程，這些全部由 ROS 端負責。韌體只做三件事：驗證指令、寫馬達、讀馬達。
 
-> **狀態：** 第 18 版的建置與所有主機端測試都已通過，**但還沒燒錄到板子上，也還沒在實機驗收**。第 17 版保留在原目錄，隨時可以燒回。
+> **狀態：** 第 19 版的建置與所有主機端測試都已通過，**但還沒燒錄到板子上，也還沒在實機驗收**。板子目前是第 18 版；第 18 版保留在原目錄，隨時可以燒回。
+>
+> **第 19 版（2026-11-20）相對第 18 版：** `READ` 多回四個 Present Load（`POS,arm1,j1..j4,l1..l4`）；新增 `COMP`（寫 Compliance Margin／Slope 與 Punch）、`GET_COMP`（讀回）、`DIAG`（電壓、溫度）；協定改成 7。開機不寫 compliance，沒送 `COMP` 時馬達行為和第 18 版一樣。用途是 2026-11-19 的晃動診斷：要能調 compliance 比較，並看到負載在哪裡換方向。詳見 [第 19 版說明](19%20ROS%20to%20CM530%20ver.%20dual%20arm/README.md)。下面第 1～4、6～8、10～13 節描述的第 18 版內容在第 19 版不變。
 
 ---
 
@@ -146,15 +148,18 @@ Windows：裝置管理員 → 連接埠 → 該 COM 埠內容 → 連接埠設�
 | 指令 | 成功回覆 | 作用 |
 |---|---|---|
 | `PING` | `PONG` | 確認通訊 |
-| `VERSION` | `VERSION,6` | 確認協定版本 |
+| `VERSION` | `VERSION,7` | 確認協定版本 |
 | `AX,arm1,p1,p2,p3,p4` | `OK,AX,arm1` | 寫入四軸目標，速度用預設 100 |
 | `AX,arm1,p1,p2,p3,p4,s1,s2,s3,s4` | `OK,AX,arm1` | 寫入四軸目標和四個 Moving Speed（1～1023） |
 | `HOME,arm1` | `OK,HOME,arm1` | 把板內 HOME 寫成目標，速度 100 |
 | `GET_HOME,arm1` | `HOME,arm1,256,512,512,512` | 查詢板內 HOME，不會動作 |
-| `READ,arm1` | `POS,arm1,j1,j2,j3,j4` | 讀回四軸目前位置（Present Position） |
+| `READ,arm1` | `POS,arm1,j1,j2,j3,j4,l1,l2,l3,l4` | 讀回四軸位置與負載（第 19 版加上負載：0～1023 大小，+1024 = CW） |
 | `HOLD,arm1` | `OK,HOLD,arm1` | 讀回四軸後，把目前位置寫成目標，速度 100 |
 | `TORQUE,arm1,1` | `OK,TORQUE,arm1,1` | 上扭力；必須先有目標資格（見第 7 節） |
 | `TORQUE,arm1,0` | `OK,TORQUE,arm1,0` | 卸扭力，並清除目標資格 |
+| `COMP,arm1,m1..m4,s1..s4,p1..p4` | `OK,COMP,arm1` | 第 19 版：寫 margin（0～254）、slope（2～128 的 2 的次方）、punch（32～1023），CW＝CCW；不改目標與扭力 |
+| `GET_COMP,arm1` | `COMP,arm1,m1..m4,s1..s4,p1..p4` | 第 19 版：從馬達讀回；CW 與 CCW 不同回 `DXL_ASYM` |
+| `DIAG,arm1` | `DIAG,arm1,v1..v4,t1..t4` | 第 19 版：電壓（0.1 V）與溫度（°C） |
 | `LED,arm1,MOVING` | `OK,LED,arm1,MOVING` | 綠燈亮、紅燈滅 |
 | `LED,arm1,STOPPED` | `OK,LED,arm1,STOPPED` | 紅燈亮、綠燈滅 |
 
@@ -271,7 +276,8 @@ Windows：裝置管理員 → 連接埠 → 該 COM 埠內容 → 連接埠設�
 | `DXL_CORRUPT` | 回應的 ID、長度或 checksum 不符，或只收到一部分 | 檢查線材、雜訊 |
 | `DXL_RX` | 其他接收失敗 | 檢查硬體 |
 | `DXL_MOTOR` | 馬達回報錯誤位元 | 依位元判斷（見下表） |
-| `DXL_RANGE` | 讀回的位置不在 0～1023 | 不要當成有效位置 |
+| `DXL_RANGE` | 讀回的位置不在 0～1023、負載不在 0～2047，或 punch 超過 1023 | 不要當成有效位置 |
+| `DXL_ASYM` | 第 19 版 `GET_COMP`：某顆的 CW 與 CCW margin／slope 不同 | 重新送 `COMP`，不要啟用 |
 
 `DXL_MOTOR` 的錯誤位元（十進位，可以相加）：1 電壓、2 角度限制、4 過熱、8 範圍、16 checksum、32 過載、64 指令。例如 5 = 電壓＋過熱。
 
@@ -409,12 +415,12 @@ python3 manual_position_terminal.py --port /dev/serial/by-id/<控制板> --arm a
 
 ```
 CM530_ROS_BRIDGE/
-├── 18 ROS to CM530 ver. dual arm/      ← 目前版本
+├── 19 ROS to CM530 ver. dual arm/      ← 目前版本（協定 7：負載、compliance）
 │   ├── APP/
 │   │   ├── inc/arm_config.h            HOME 與預設速度
 │   │   ├── src/main.c                  時脈、UART（含主機鮑率）、主迴圈
 │   │   ├── src/bridge.c                指令解析、目標資格、回覆
-│   │   ├── src/ax12.c                  SYNC_WRITE（位置＋速度）、扭力、讀位置
+│   │   ├── src/ax12.c                  SYNC_WRITE（位置＋速度、compliance、punch）、扭力、讀位置／負載／compliance／診斷
 │   │   ├── src/arm_led.c               兩臂指示燈
 │   │   ├── src/dynamixel.c, dxl_hal.c  ROBOTIS DYNAMIXEL SDK
 │   │   └── src/stm32f10x_it.c          中斷
@@ -424,7 +430,8 @@ CM530_ROS_BRIDGE/
 │   ├── ROS_CM530_INTERFACE_SPEC.md     完整對接規格
 │   ├── Makefile, stm32.ld              建置設定（Flash 起點 0x08003000）
 │   └── CM530.hex, CM530.bin, SHA256SUMS
-├── 17 ROS to CM530 ver. dual arm/      ← 上一版（協定 5、57600），保留不動
+├── 18 ROS to CM530 ver. dual arm/      ← 上一版（協定 6），板子目前燒的版本，保留不動
+├── 17 ROS to CM530 ver. dual arm/      ← 協定 5、57600，保留不動
 ├── 12～16 …                            更早的版本
 ├── 01～11 …                            ROBOTIS 原廠範例
 └── embeddec_c(cm530_v1_02) of/         ROBOTIS Embedded C 原始範例
@@ -438,6 +445,11 @@ CM530_ROS_BRIDGE/
 
 | 項目 | 狀態 | 日期 |
 |---|---|---|
+| 第 19 版 ARM 完整建置、`verify_firmware.py` | 通過 | 2026-11-20 |
+| 第 19 版 C 測試（含 COMP／GET_COMP／DIAG／負載），gcc、`-Werror`，另加 ASan＋UBSan | 通過 | 2026-11-20 |
+| 第 19 版 Python 終端測試 27 項 | 通過 | 2026-11-20 |
+| ROS 驅動透過模擬序列埠跑第 19 版解析器（端對端，含 COMP 寫入與讀回） | 通過 | 2026-11-20 |
+| **燒錄第 19 版、COMP／負載／DIAG 實機驗收** | 尚未執行 | — |
 | 第 18 版 ARM 完整建置、`verify_firmware.py` | 通過 | 2026-11-18 |
 | 第 18 版 C 測試（含速度測試），gcc 13、`-Werror` | 通過 | 2026-11-18 |
 | 同上，加 AddressSanitizer ＋ UBSan | 通過 | 2026-11-18 |
@@ -456,7 +468,8 @@ CM530_ROS_BRIDGE/
 
 | 版本 | 協定 | 主機鮑率 | 重點 |
 |---|---|---|---|
-| **18**（2026-11-18） | 6 | 1 Mbps | AX 帶 Moving Speed；HOME／HOLD 用預設速度 100；拒絕速度 0 |
+| **19**（2026-11-20） | 7 | 1 Mbps | READ 帶 Present Load；COMP／GET_COMP／DIAG；開機不寫 compliance |
+| 18（2026-11-18） | 6 | 1 Mbps | AX 帶 Moving Speed；HOME／HOLD 用預設速度 100；拒絕速度 0 |
 | 17（2026-10-07，HOME 於 2026-11-13 改為 256,512,512,512） | 5 | 57600 | 新增 HOME、GET_HOME、READ、HOLD；移除 BEGIN／PT／END／STOP；只寫位置 |
 | 16（2026-09-30） | 4 | — | 雙臂 AX、TORQUE、LED |
 | 12～15 | — | — | 早期橋接版本，指令語法（例如 BEGIN／PT／END）與現行不相容 |
@@ -468,8 +481,9 @@ CM530_ROS_BRIDGE/
 
 | 文件 | 內容 |
 |---|---|
-| [第 18 版操作說明](18%20ROS%20to%20CM530%20ver.%20dual%20arm/README.md) | 版本目錄內的簡要說明 |
-| [ROS ↔ CM-530 對接規格](18%20ROS%20to%20CM530%20ver.%20dual%20arm/ROS_CM530_INTERFACE_SPEC.md) | 完整協定、收發範例、錯誤處理建議 |
+| [第 19 版操作說明](19%20ROS%20to%20CM530%20ver.%20dual%20arm/README.md) | 版本目錄內的簡要說明 |
+| [ROS ↔ CM-530 對接規格](19%20ROS%20to%20CM530%20ver.%20dual%20arm/ROS_CM530_INTERFACE_SPEC.md) | 完整協定、收發範例、錯誤處理建議 |
+| [第 18 版操作說明](18%20ROS%20to%20CM530%20ver.%20dual%20arm/README.md) | 上一版 |
 | [驗證與測試總整理](驗證與測試總整理.md) | 所有版本的測試與驗收紀錄 |
 | [HOME 校正資料收集](18%20ROS%20to%20CM530%20ver.%20dual%20arm/HOME_CALIBRATION_TEST.md) | HOME 量測流程 |
 | [AGENTS.md](AGENTS.md) | 開發規範 |
