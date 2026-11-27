@@ -587,24 +587,7 @@ python3 manual_position_terminal.py --port /dev/serial/by-id/<控制板> --arm a
 
 ### 資料流
 
-```
-主機 ──USB──> FT232R ──> USART3 RX 中斷 ──> 128 bytes 環形緩衝區
-                                                  │（主迴圈逐字取出）
-                                                  ▼
-                                   BridgeFeed()：組行、遇行尾 → process()
-                                                  │
-                       ┌──────────────────────────┼──────────────────────┐
-                       ▼                          ▼                      ▼
-                 寫入（ax12.c）              讀取（ax12.c）            ArmLedSet()
-           Ax12WriteGoals    位置＋速度   Ax12ReadPositions  位置＋負載     GPIO
-           Ax12WriteTorque   扭力         Ax12ReadCompliance margin/slope/punch
-           Ax12WriteCompliance           Ax12ReadDiag       電壓＋溫度
-                       └──────────┬───────────────┘
-                                  ▼
-                 USART1 ── DYNAMIXEL 匯流排 ──> AX-12A
-
-           每筆指令的結果：TxDString() ──> USART3 TX ──> 主機
-```
+![CM-530 第 19 版韌體架構](docs/images/firmware-architecture.svg)
 
 - 接收中斷只負責放進環形緩衝區；緩衝區滿時設溢位旗標並丟棄到下一個行尾，主迴圈據此回 `ERR,OVERFLOW`。
 - 指令在主迴圈中同步執行（包括 DYNAMIXEL 傳輸），因為主機必須等回覆才送下一筆，緩衝區不會被灌爆。
@@ -637,7 +620,7 @@ CM530_ROS_BRIDGE/
 ├── 12～16 …                            更早的橋接版本
 ├── 01～11 …                            ROBOTIS 原廠功能範例
 ├── embeddec_c(cm530_v1_02) of/         ROBOTIS Embedded C 原始範例
-├── docs/images/                        系統示意圖、流程圖、控制板照片
+├── docs/images/                        系統示意圖、流程圖、韌體架構圖、控制板照片
 ├── 驗證與測試總整理.md                  所有版本的測試與驗收紀錄
 └── AGENTS.md                           開發規範
 ```
