@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" role="img" aria-labelledby="title desc">
+  <title id="title">視覺導引雙臂協同搬運系統</title>
+  <desc id="desc">左側是工作區俯視圖：兩支手臂位於遠離使用者的長邊，使用者由左到右看到 A、B、C 三區；Arm 1 把物件從 A 區搬到 B 區，Arm 2 再從 B 區搬到 C 區的八個格位，B 區同一時間只允許一支手臂進入。右側是系統架構：相機感知、任務協調、MoveIt 2 規劃，最後由 CM-530 控制八顆 AX-12A、ESP32 控制吸盤。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#444"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ea580c"/>
+    </marker>
+    <style>
+      text { font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", "Noto Sans CJK TC", sans-serif; fill: #222; }
+      .h1 { font-size: 22px; font-weight: 700; }
+      .sub { font-size: 13.5px; fill: #555; }
+      .panel { font-size: 16px; font-weight: 700; }
+      .title { font-size: 14.5px; font-weight: 700; }
+      .body { font-size: 12.5px; }
+      .small { font-size: 12px; fill: #555; }
+      .slot { font-size: 12px; fill: #8a6d1c; }
+      .line { stroke: #444; stroke-width: 1.6; fill: none; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="560" fill="#ffffff"/>
+  <text x="500" y="38" text-anchor="middle" class="h1">視覺導引雙臂協同搬運系統</text>
+  <text x="500" y="62" text-anchor="middle" class="sub">兩支四軸 AX-12A 手臂以吸盤協作：A 區取出 → B 區交接 → 放入 C 區八個格位</text>
+
+  <!-- ===== Left: workspace top view ===== -->
+  <rect x="20" y="84" width="560" height="456" rx="12" fill="#f6f6f6" stroke="#888" stroke-width="1.4"/>
+  <text x="36" y="110" class="panel">工作區（俯視）</text>
+
+  <!-- arms on the far edge -->
+  <text x="300" y="136" text-anchor="middle" class="small">手臂側（遠離使用者）</text>
+  <circle cx="220" cy="186" r="13" fill="#2563eb"/>
+  <text x="220" y="166" text-anchor="middle" class="title" style="fill:#2563eb">Arm 1</text>
+  <circle cx="380" cy="186" r="13" fill="#ea580c"/>
+  <text x="380" y="166" text-anchor="middle" class="title" style="fill:#ea580c">Arm 2</text>
+
+  <!-- environment camera field of view -->
+  <rect x="48" y="196" width="504" height="222" rx="6" fill="none" stroke="#0f766e" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="546" y="436" text-anchor="end" class="small" style="fill:#0f766e">環境相機俯視整個工作區</text>
+
+  <!-- zones -->
+  <rect x="60" y="206" width="160" height="200" fill="#eef4ff" stroke="#2563eb" stroke-width="1.6"/>
+  <rect x="220" y="206" width="160" height="200" fill="#e9f6ec" stroke="#15803d" stroke-width="1.6"/>
+  <rect x="380" y="206" width="160" height="200" fill="#fff7e0" stroke="#c98a1b" stroke-width="1.6"/>
+  <text x="140" y="394" text-anchor="middle" class="title" style="fill:#2563eb">A 區 · 供料</text>
+  <text x="300" y="394" text-anchor="middle" class="title" style="fill:#15803d">B 區 · 交接</text>
+  <text x="460" y="394" text-anchor="middle" class="title" style="fill:#8a6d1c">C 區 · 8 格</text>
+
+  <!-- objects in A -->
+  <circle cx="110" cy="300" r="10" fill="#f97316"/>
+  <circle cx="140" cy="300" r="10" fill="#f97316"/>
+  <circle cx="110" cy="330" r="10" fill="#f97316"/>
+  <circle cx="140" cy="330" r="10" fill="#f97316"/>
+
+  <!-- B interlock and object -->
+  <rect x="268" y="218" width="64" height="24" rx="12" fill="#7c3aed"/>
+  <text x="300" y="235" text-anchor="middle" class="body" style="fill:#ffffff;font-weight:700">互鎖</text>
+  <circle cx="300" cy="315" r="10" fill="#f97316"/>
+
+  <!-- C slots: 1,2 nearest the arms; odd column next to B -->
+  <g>
+    <rect x="410" y="218" width="44" height="32" rx="4" fill="#ffffff" stroke="#c98a1b"/>
+    <rect x="466" y="218" width="44" height="32" rx="4" fill="#ffffff" stroke="#c98a1b"/>
+    <rect x="410" y="258" width="44" height="32" rx="4" fill="#ffffff" stroke="#c98a1b"/>
+    <rect x="466" y="258" width="44" height="32" rx="4" fill="#ffffff" stroke="#c98a1b"/>
+    <rect x="410" y="298" width="44" height="32" rx="4" fill="#ffffff" stroke="#c98a1b"/>
+    <rect x="466" y="298" width="44" height="32" rx="4" fill="#ffffff" stroke="#c98a1b"/>
+    <rect x="410" y="338" width="44" height="32" rx="4" fill="#ffffff" stroke="#c98a1b"/>
+    <rect x="466" y="338" width="44" height="32" rx="4" fill="#ffffff" stroke="#c98a1b"/>
+    <text x="432" y="239" text-anchor="middle" class="slot">1</text>
+    <text x="488" y="239" text-anchor="middle" class="slot">2</text>
+    <text x="432" y="279" text-anchor="middle" class="slot">3</text>
+    <text x="488" y="279" text-anchor="middle" class="slot">4</text>
+    <text x="432" y="319" text-anchor="middle" class="slot">5</text>
+    <text x="488" y="319" text-anchor="middle" class="slot">6</text>
+    <text x="432" y="359" text-anchor="middle" class="slot">7</text>
+    <text x="488" y="359" text-anchor="middle" class="slot">8</text>
+  </g>
+
+  <!-- transfers -->
+  <path d="M152,292 Q225,250 284,306" fill="none" stroke="#2563eb" stroke-width="2.4" marker-end="url(#arrow-blue)"/>
+  <path d="M312,306 Q365,250 420,240" fill="none" stroke="#ea580c" stroke-width="2.4" marker-end="url(#arrow-orange)"/>
+
+  <text x="300" y="460" text-anchor="middle" class="body">使用者側：由左到右看到 A | B | C</text>
+  <text x="300" y="484" text-anchor="middle" class="small">Arm 1 把物件從 A 搬到 B，Arm 2 從 B 搬到 C 的下一個空格</text>
+  <text x="300" y="504" text-anchor="middle" class="small">B 區同一時間只允許一支手臂進入</text>
+  <text x="300" y="524" text-anchor="middle" class="small">C 區格位 1、2 最靠手臂，單號在靠 B 區那一欄</text>
+
+  <!-- ===== Right: architecture ===== -->
+  <rect x="600" y="84" width="380" height="456" rx="12" fill="#f6f6f6" stroke="#888" stroke-width="1.4"/>
+  <text x="616" y="110" class="panel">系統架構（ROS 2 Jazzy · Jetson AGX Orin）</text>
+
+  <rect x="620" y="126" width="340" height="66" rx="8" fill="#e6f6f3" stroke="#0f766e" stroke-width="1.5"/>
+  <text x="790" y="148" text-anchor="middle" class="title" style="fill:#0f766e">感知</text>
+  <text x="790" y="167" text-anchor="middle" class="body">環境相機 env_scene：判斷 A、B、C 狀態</text>
+  <text x="790" y="184" text-anchor="middle" class="body">手臂相機 × 2：監控</text>
+  <line x1="790" y1="192" x2="790" y2="208" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="620" y="210" width="340" height="66" rx="8" fill="#f1ecfd" stroke="#6d28d9" stroke-width="1.5"/>
+  <text x="790" y="232" text-anchor="middle" class="title" style="fill:#6d28d9">決策</text>
+  <text x="790" y="251" text-anchor="middle" class="body">dual_arm_coordinator</text>
+  <text x="790" y="268" text-anchor="middle" class="body">任務流程、B 區互鎖、故障與復歸</text>
+  <line x1="790" y1="276" x2="790" y2="292" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="620" y="294" width="340" height="50" rx="8" fill="#eef4ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="790" y="315" text-anchor="middle" class="title" style="fill:#2563eb">規劃與控制</text>
+  <text x="790" y="334" text-anchor="middle" class="body">MoveIt 2 → ros2_control → cm530_hardware 驅動</text>
+  <line x1="790" y1="344" x2="790" y2="360" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="620" y="362" width="340" height="112" rx="8" fill="#fff1e6" stroke="#c2410c" stroke-width="1.5"/>
+  <text x="790" y="384" text-anchor="middle" class="title" style="fill:#c2410c">執行</text>
+  <rect x="634" y="396" width="190" height="64" rx="7" fill="#ffffff" stroke="#c2410c" stroke-width="2.4"/>
+  <text x="729" y="418" text-anchor="middle" class="title">CM-530（本儲存庫）</text>
+  <text x="729" y="436" text-anchor="middle" class="body">USB 1 Mbps · 協定 7</text>
+  <text x="729" y="452" text-anchor="middle" class="body">控制 8 顆 AX-12A</text>
+  <rect x="836" y="396" width="110" height="64" rx="7" fill="#ffffff" stroke="#c2410c" stroke-width="1.4"/>
+  <text x="891" y="422" text-anchor="middle" class="title">ESP32</text>
+  <text x="891" y="442" text-anchor="middle" class="body">吸盤</text>
+
+  <text x="790" y="500" text-anchor="middle" class="small">safety_supervisor 失效時停用控制器</text>
+  <text x="790" y="522" text-anchor="middle" class="small">Gazebo Harmonic 模擬驗證</text>
+</svg>
