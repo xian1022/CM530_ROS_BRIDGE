@@ -98,7 +98,13 @@ python manual_position_terminal.py --port COM4 --arm arm1
 | CM-530（本韌體） | 解析並驗證文字指令、SYNC_WRITE 位置＋速度與 compliance、扭力開關、逐顆讀回位置／負載／compliance／電壓溫度、LED 顯示、回報錯誤 |
 | AX-12A × 8 | 依 Goal Position、Moving Speed 與 compliance 設定移動 |
 
-韌體沒有「任務」的觀念：沒有佇列、沒有插值、沒有完成事件，每一筆指令處理完就回覆一行。整體搬運流程見 [搬運流程圖](docs/images/dual-arm-flowchart.png)。
+韌體沒有「任務」的觀念：沒有佇列、沒有插值、沒有完成事件，每一筆指令處理完就回覆一行。
+
+### 搬運流程
+
+下圖是 ROS 端任務協調節點 `dual_arm_coordinator` 實際執行的步驟（依 [dual_arm_system](https://github.com/xian1022/dual_arm_system) 整理）。圖中每個移動步驟，在實機上都由驅動逐點送 `AX`、以 `READ` 回讀位置；韌體只看得到這些指令，看不到狀態名稱。
+
+![雙臂搬運流程](docs/images/transport-flow.svg)
 
 ---
 
@@ -620,7 +626,7 @@ CM530_ROS_BRIDGE/
 ├── 12～16 …                            更早的橋接版本
 ├── 01～11 …                            ROBOTIS 原廠功能範例
 ├── embeddec_c(cm530_v1_02) of/         ROBOTIS Embedded C 原始範例
-├── docs/images/                        系統示意圖、流程圖、韌體架構圖、控制板照片
+├── docs/images/                        系統示意圖、搬運流程圖、韌體架構圖、控制板照片
 ├── 驗證與測試總整理.md                  所有版本的測試與驗收紀錄
 └── AGENTS.md                           開發規範
 ```
@@ -672,7 +678,8 @@ CM530_ROS_BRIDGE/
 | [第 18 版操作說明](18%20ROS%20to%20CM530%20ver.%20dual%20arm/README.md) | 上一版 |
 | [驗證與測試總整理](驗證與測試總整理.md) | 所有版本的測試與驗收紀錄 |
 | [HOME 校正資料收集](19%20ROS%20to%20CM530%20ver.%20dual%20arm/HOME_CALIBRATION_TEST.md) | HOME 量測流程 |
-| [搬運流程圖](docs/images/dual-arm-flowchart.png) | 雙臂任務流程與 B 站互鎖 |
+| [搬運流程圖](docs/images/transport-flow.svg) | `dual_arm_coordinator` 的任務流程、B 區互鎖與人工復歸 |
+| [dual_arm_system](https://github.com/xian1022/dual_arm_system) | ROS 2 雙臂系統主專案（任務協調、視覺、MoveIt、`cm530_hardware` 驅動） |
 | [AGENTS.md](AGENTS.md) | 開發規範 |
 | [ROBOTIS CM-530 e-Manual](https://emanual.robotis.com/docs/en/parts/controller/cm-530/) | 控制板官方說明 |
 | [ROBOTIS AX-12A e-Manual](https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/) | 馬達控制表（Goal Position、Moving Speed、Compliance、Present Load 等） |

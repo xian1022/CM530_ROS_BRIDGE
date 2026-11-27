@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1110" width="1000" height="1110" role="img" aria-labelledby="title desc">
+<title id="title">雙臂搬運流程（dual_arm_coordinator）</title>
+<desc id="desc">按開始後兩臂回 HOME；每輪 B 區沒有物體時由 Arm 1 從 A 區搬到 B 區，再由 Arm 2 從 B 區搬到 C 區的空格，B 區以互鎖保證一次只有一支手臂進入；失敗、取消或急停進入 FAULT，經人工復歸回到 IDLE。</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444"/></marker>
+  <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c0392b"/></marker>
+  <style>
+    text { font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", "Noto Sans CJK TC", sans-serif; fill: #222; }
+    .h1 { font-size: 22px; font-weight: 700; }
+    .sub { font-size: 13px; fill: #555; }
+    .title { font-size: 14px; font-weight: 700; }
+    .group { font-size: 16px; font-weight: 700; }
+    .state { font-family: Consolas, "SF Mono", Menlo, monospace; font-size: 11px; fill: #666; }
+    .body { font-size: 12.5px; }
+    .small { font-size: 12px; fill: #444; }
+    .label { font-size: 12.5px; fill: #444; }
+    .flabel { font-size: 12.5px; fill: #c0392b; }
+    .note { font-size: 12.5px; fill: #555; }
+    .line { stroke: #444; stroke-width: 1.6; fill: none; }
+    .dline { stroke: #c0392b; stroke-width: 1.6; fill: none; stroke-dasharray: 6 4; }
+  </style>
+</defs>
+<rect x="0" y="0" width="1000" height="1110" fill="#ffffff"/>
+<text x="500" y="36" text-anchor="middle" class="h1">雙臂搬運流程</text>
+<text x="500" y="60" text-anchor="middle" class="sub">依 dual_arm_coordinator 整理 · 一次只動一支手臂 · 紫色為 B 區互鎖</text>
+<rect x="390" y="80" width="220" height="40" rx="20" fill="#e9f6ec" stroke="#15803d" stroke-width="1.5"/>
+<text x="500" y="105" text-anchor="middle" class="title">操作介面按「開始」</text>
+<polyline points="500,120 500,136" class="line" marker-end="url(#arrow)"/>
+<rect x="350" y="138" width="300" height="50" rx="8" fill="#ffffff" stroke="#555" stroke-width="1.5"/>
+<text x="500" y="160" text-anchor="middle" class="title">兩臂回 HOME</text>
+<text x="500" y="178" text-anchor="middle" class="body">忙碌、故障或急停鎖定時拒絕啟動</text>
+<polyline points="500,188 500,204" class="line" marker-end="url(#arrow)"/>
+<polygon points="500,206 640,244 500,282 360,244" fill="#ffffff" stroke="#555" stroke-width="1.5"/>
+<text x="500" y="239" text-anchor="middle" class="body">還有空格且</text>
+<text x="500" y="257" text-anchor="middle" class="body">未達次數？</text>
+<polyline points="360,244 322,244" class="line" marker-end="url(#arrow)"/>
+<text x="350" y="236" text-anchor="end" class="label">否</text>
+<rect x="120" y="222" width="200" height="44" rx="22" fill="#e9f6ec" stroke="#15803d" stroke-width="1.5"/>
+<text x="220" y="241" text-anchor="middle" class="title">FULL／SUCCEEDED</text>
+<text x="220" y="258" text-anchor="middle" class="small">結束本次搬運</text>
+<polyline points="500,282 500,300" class="line" marker-end="url(#arrow)"/>
+<text x="510" y="298" text-anchor="start" class="label">是</text>
+<polygon points="500,302 620,340 500,378 380,340" fill="#ffffff" stroke="#555" stroke-width="1.5"/>
+<text x="500" y="335" text-anchor="middle" class="body">每輪前檢查通過，</text>
+<text x="500" y="353" text-anchor="middle" class="body">B 區已有物體？</text>
+<rect x="30" y="396" width="440" height="368" rx="12" fill="#eef4ff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="46" y="423" text-anchor="start" class="group" style="fill:#2563eb">Arm 1：A 區 → B 區</text>
+<rect x="54" y="440" width="392" height="50" rx="7" fill="#ffffff" stroke="#2563eb" stroke-width="1.4"/>
+<text x="250" y="461" text-anchor="middle" class="title">確認區域、取得取料點、檢查可達</text>
+<text x="250" y="479" text-anchor="middle" class="state">CHECK_ZONES · QUERY_TARGET · PREFLIGHT</text>
+<rect x="54" y="504" width="392" height="50" rx="7" fill="#ffffff" stroke="#2563eb" stroke-width="1.4"/>
+<text x="250" y="525" text-anchor="middle" class="title">到 A 區吸取，持物回 HOME</text>
+<text x="250" y="543" text-anchor="middle" class="state">APPROACH_A · GRASP_A · LIFT_A</text>
+<polyline points="250,490 250,503" class="line" marker-end="url(#arrow)"/>
+<rect x="54" y="568" width="392" height="50" rx="7" fill="#f3edff" stroke="#7c3aed" stroke-width="1.8"/>
+<text x="250" y="589" text-anchor="middle" class="title">取得 B 區互鎖</text>
+<text x="250" y="607" text-anchor="middle" class="state">RESERVE_B</text>
+<polyline points="250,554 250,567" class="line" marker-end="url(#arrow)"/>
+<rect x="54" y="632" width="392" height="50" rx="7" fill="#ffffff" stroke="#2563eb" stroke-width="1.4"/>
+<text x="250" y="653" text-anchor="middle" class="title">放到 B 區，空手回 HOME</text>
+<text x="250" y="671" text-anchor="middle" class="state">APPROACH_B · RELEASE_B · LIFT_B</text>
+<polyline points="250,618 250,631" class="line" marker-end="url(#arrow)"/>
+<rect x="54" y="696" width="392" height="50" rx="7" fill="#f3edff" stroke="#7c3aed" stroke-width="1.8"/>
+<text x="250" y="717" text-anchor="middle" class="title">確認 B 區有物體，釋放互鎖</text>
+<text x="250" y="735" text-anchor="middle" class="state">VERIFY_B</text>
+<polyline points="250,682 250,695" class="line" marker-end="url(#arrow)"/>
+<rect x="530" y="396" width="440" height="432" rx="12" fill="#fff3ea" stroke="#ea580c" stroke-width="1.6"/>
+<text x="546" y="423" text-anchor="start" class="group" style="fill:#ea580c">Arm 2：B 區 → C 區</text>
+<rect x="554" y="440" width="392" height="50" rx="7" fill="#ffffff" stroke="#ea580c" stroke-width="1.4"/>
+<text x="750" y="461" text-anchor="middle" class="title">確認區域、保留下一個空格、檢查可達</text>
+<text x="750" y="479" text-anchor="middle" class="state">CHECK_ZONES · QUERY_B_TARGET · RESERVE_SLOT · PREFLIGHT</text>
+<rect x="554" y="504" width="392" height="50" rx="7" fill="#f3edff" stroke="#7c3aed" stroke-width="1.8"/>
+<text x="750" y="525" text-anchor="middle" class="title">取得 B 區互鎖</text>
+<text x="750" y="543" text-anchor="middle" class="state">RESERVE_B</text>
+<polyline points="750,490 750,503" class="line" marker-end="url(#arrow)"/>
+<rect x="554" y="568" width="392" height="50" rx="7" fill="#ffffff" stroke="#ea580c" stroke-width="1.4"/>
+<text x="750" y="589" text-anchor="middle" class="title">到 B 區吸取，持物回 HOME</text>
+<text x="750" y="607" text-anchor="middle" class="state">APPROACH_B · GRASP_B · LIFT_B</text>
+<polyline points="750,554 750,567" class="line" marker-end="url(#arrow)"/>
+<rect x="554" y="632" width="392" height="50" rx="7" fill="#f3edff" stroke="#7c3aed" stroke-width="1.8"/>
+<text x="750" y="653" text-anchor="middle" class="title">確認 B 區已空，釋放互鎖</text>
+<text x="750" y="671" text-anchor="middle" class="state">VERIFY_B_EMPTY</text>
+<polyline points="750,618 750,631" class="line" marker-end="url(#arrow)"/>
+<rect x="554" y="696" width="392" height="50" rx="7" fill="#ffffff" stroke="#ea580c" stroke-width="1.4"/>
+<text x="750" y="717" text-anchor="middle" class="title">放到 C 格，空手回 HOME</text>
+<text x="750" y="735" text-anchor="middle" class="state">APPROACH_C · RELEASE_C · LIFT_C</text>
+<polyline points="750,682 750,695" class="line" marker-end="url(#arrow)"/>
+<rect x="554" y="760" width="392" height="50" rx="7" fill="#ffffff" stroke="#ea580c" stroke-width="1.4"/>
+<text x="750" y="781" text-anchor="middle" class="title">確認 C 格有物體，寫入紀錄</text>
+<text x="750" y="799" text-anchor="middle" class="state">VERIFY_C</text>
+<polyline points="750,746 750,759" class="line" marker-end="url(#arrow)"/>
+<polyline points="380,340 250,340 250,439" class="line" marker-end="url(#arrow)"/>
+<text x="370" y="332" text-anchor="end" class="label">否</text>
+<polyline points="620,340 750,340 750,439" class="line" marker-end="url(#arrow)"/>
+<text x="630" y="332" text-anchor="start" class="label">是</text>
+<polyline points="446,721 500,721 500,477 553,477" class="line" marker-end="url(#arrow)"/>
+<polyline points="946,785 986,785 986,244 642,244" class="line" marker-end="url(#arrow)"/>
+<text x="978" y="236" text-anchor="end" class="label">下一輪</text>
+<polyline points="250,764 250,887 338,887" class="dline" marker-end="url(#arrow-red)"/>
+<polyline points="750,828 750,887 662,887" class="dline" marker-end="url(#arrow-red)"/>
+<text x="260" y="784" text-anchor="start" class="flabel">檢查或規劃失敗、取消、急停</text>
+<rect x="340" y="862" width="320" height="50" rx="8" fill="#fdecea" stroke="#c0392b" stroke-width="1.5"/>
+<text x="500" y="884" text-anchor="middle" class="title">FAULT</text>
+<text x="500" y="902" text-anchor="middle" class="body">停止動作、鎖住 B 區</text>
+<polyline points="500,912 500,930" class="line" marker-end="url(#arrow)"/>
+<rect x="270" y="932" width="460" height="50" rx="8" fill="#f6f6f6" stroke="#555" stroke-width="1.5"/>
+<text x="500" y="954" text-anchor="middle" class="title">人工復歸</text>
+<text x="500" y="972" text-anchor="middle" class="body">清空吸盤與 B 區，確認兩臂在 HOME、C 區一致</text>
+<polyline points="500,982 500,998" class="line" marker-end="url(#arrow)"/>
+<rect x="400" y="1000" width="200" height="40" rx="20" fill="#e9f6ec" stroke="#15803d" stroke-width="1.5"/>
+<text x="500" y="1025" text-anchor="middle" class="title">IDLE，可再按「開始」</text>
+<text x="500" y="1072" text-anchor="middle" class="note">每一步先檢查取消與急停，狀態先寫入 journal 再動作。</text>
+<text x="500" y="1092" text-anchor="middle" class="note">實機上每個移動都由 cm530_hardware 逐點送 AX、以 READ 回讀位置；吸盤由 ESP32 控制。</text>
+</svg>

@@ -14,7 +14,7 @@
 
 Compliance 和 Punch 是 AX-12A 的 RAM 暫存器，馬達斷電後回到出廠值（margin 1、slope 32、punch 32）。韌體開機時**不寫入**這些暫存器，所以沒送 `COMP` 時，行為和第 18 版完全一樣；由主機在每次啟用時寫入並用 `GET_COMP` 讀回確認。
 
-[系統分工與目前進度](../README.md) · [搬運流程圖](../docs/images/dual-arm-flowchart.png) · [ROS 對接規格](ROS_CM530_INTERFACE_SPEC.md) · [驗證與測試總整理](../驗證與測試總整理.md) · [歷史驗收紀錄](VALIDATION.md)
+[系統分工與目前進度](../README.md) · [搬運流程圖](../docs/images/transport-flow.svg) · [ROS 對接規格](ROS_CM530_INTERFACE_SPEC.md) · [驗證與測試總整理](../驗證與測試總整理.md) · [歷史驗收紀錄](VALIDATION.md)
 
 ## 控制設定
 
